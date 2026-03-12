@@ -4,6 +4,7 @@ import { logoutCommand } from './commands/logout.js';
 import { whoamiCommand } from './commands/whoami.js';
 import { creditCommand } from './commands/credit.js';
 import { membershipCommand } from './commands/membership.js';
+import { tokenCommand } from './commands/token.js';
 
 const program = new Command();
 
@@ -36,5 +37,10 @@ program
   .command('membership')
   .description('Open membership subscription page in browser')
   .action(membershipCommand);
+
+program
+  .command('token')
+  .description('Print current valid access token (refreshes if needed)')
+  .action(tokenCommand);
 
 program.parse();

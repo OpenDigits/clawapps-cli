@@ -5,22 +5,26 @@ import { loadCredentials, saveCredentials } from '../lib/credentials.js';
 import { apiGet, type WrappedResponse } from '../lib/api.js';
 import { CONFIG } from '../lib/config.js';
 import { startLoginCallbackServer } from '../auth/login-server.js';
+import { ensureValidToken } from './helpers/ensure-token.js';
 import type { UserInfo } from '../lib/types.js';
 
 export async function loginCommand(): Promise<void> {
-  // Check if already logged in
+  // Check if already logged in, refresh token if needed
   const existing = await loadCredentials();
   if (existing) {
     try {
-      const res = await apiGet<WrappedResponse<UserInfo>>(CONFIG.CLAW_ME, existing.access_token);
-      if (res.ok) {
-        const user = res.data.data;
-        console.log(chalk.yellow(`Already logged in as ${user.email || user.name || 'user'}.`));
-        console.log(chalk.gray('Run `claw logout` first to switch accounts.'));
-        return;
+      const validated = await ensureValidToken(existing);
+      if (validated) {
+        const res = await apiGet<WrappedResponse<UserInfo>>(CONFIG.CLAW_ME, validated.access_token);
+        if (res.ok) {
+          const user = res.data.data;
+          console.log(chalk.green(`Already logged in as ${chalk.bold(user.email || user.name || 'user')}.`));
+          console.log(chalk.gray('Session refreshed. Run `claw logout` first to switch accounts.'));
+          return;
+        }
       }
     } catch {
-      // Token might be expired, continue with login
+      // Token validation/refresh failed, continue with browser login
     }
   }
 
