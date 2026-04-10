@@ -21,7 +21,7 @@ clawapps login
 # 2. Check balance
 clawapps balance
 
-# 3. Send a message to your agent workspace
+# 3. Send a message to your agent
 clawapps send "hello"
 
 # 4. Or start a persistent session
@@ -30,9 +30,7 @@ clawapps connect
 
 ## Commands
 
-### Authentication
-
-#### `clawapps login`
+### `clawapps login`
 
 Log in via WeChat QR code. Scan with WeChat to authenticate (valid for 3 minutes). Tokens are stored locally for subsequent commands.
 
@@ -45,25 +43,11 @@ Waiting for authentication...
 ✔ Login successful!
 ```
 
-#### `clawapps logout`
+### `clawapps logout`
 
-Sign out and clear local credentials.
+Log out and clear local credentials and session history.
 
-#### `clawapps whoami`
-
-Show current account info. Auto-refreshes expired tokens.
-
-#### `clawapps token`
-
-Print valid access token to stdout. Auto-refreshes if expired. Designed for scripting.
-
-```bash
-curl -H "Authorization: Bearer $(clawapps token)" https://api.clawapps.ai/api/v1/...
-```
-
-### Agent Workspace
-
-#### `clawapps send <message>`
+### `clawapps send <message>`
 
 Send a message to your agent workspace and receive the response.
 
@@ -79,18 +63,14 @@ $ clawapps send "hello" --json
 {"event":"complete","success":true,"usage":{...}}
 ```
 
-Options:
-- `--json` — Output as NDJSON events (one JSON per line)
-- `--session-id <id>` — Use a specific session
-- `--new-session` — Force create a new session
-- `--timeout <ms>` — Response timeout
+Options: `--json` `--session-id <id>` `--new-session` `--timeout <ms>`
 
-#### `clawapps connect`
+### `clawapps connect`
 
 Start a persistent interactive session with your agent workspace.
 
 ```bash
-# Interactive mode (human)
+# Interactive mode
 $ clawapps connect
 Connected to session: abc-123
 > hello
@@ -99,18 +79,11 @@ Hello! How can I help you?
 
 # JSON pipe mode (AI assistant integration)
 $ clawapps connect --json
-{"event":"session_created","session_id":"abc-123"}
-{"event":"ready"}
-# stdin: {"action":"message","content":"hello"}
-# stdout: {"event":"text","content":"Hello!"}
 ```
 
-Options:
-- `--json` — NDJSON streaming I/O (stdin/stdout)
-- `--session-id <id>` — Resume a specific session
-- `--timeout <ms>` — Connection timeout
+Options: `--json` `--session-id <id>` `--timeout <ms>`
 
-#### `clawapps balance`
+### `clawapps balance`
 
 Check your credit balance.
 
@@ -124,7 +97,7 @@ $ clawapps balance --json
 {"credits":78.16,"membership":"free","display_name":"sammi"}
 ```
 
-#### `clawapps sessions`
+### `clawapps sessions`
 
 List or manage local session history.
 
@@ -133,42 +106,24 @@ $ clawapps sessions
 $ clawapps sessions --clear
 ```
 
-### Payment
-
-#### `clawapps payment-grant <skill_id>`
-
-Authorize skill payment via QR code.
-
-#### `clawapps recharge-credits`
-
-Display QR code to recharge credits.
-
-#### `clawapps subscribe`
-
-Display QR code to subscribe membership.
-
 ## AI Assistant Integration
 
-External AI assistants (e.g., Claude Code) can use the CLI as a subprocess to interact with the ClawApps agent workspace:
+External AI assistants (e.g., Claude Code) can use the CLI as a subprocess:
 
 ```bash
-# Set credentials via environment variables
 export CLAWAPPS_ACCESS_TOKEN="eyJ..."
 export CLAWAPPS_REFRESH_TOKEN="eyJ..."
-
-# Send a message and parse JSON response
 clawapps send "deploy my app" --json
 ```
 
-**JSON events** (stdout, one per line):
+JSON events (stdout, one per line):
 
 | Event | Description |
 |-------|-------------|
 | `session_created` | Session ID assigned |
 | `text` | Assistant response text (streaming) |
 | `mode_change` | Switched from Gemini to Claude mode |
-| `status` | Processing state (thinking, etc.) |
-| `complete` | Response finished, includes usage stats |
+| `complete` | Response finished with usage stats |
 | `cost` | Credits consumed and remaining balance |
 | `error` | Error occurred |
 
@@ -176,25 +131,22 @@ clawapps send "deploy my app" --json
 
 Tokens stored at `~/.clawapps/credentials.json` (permissions `0600`).
 
-Session history stored at `~/.clawapps/sessions.json`.
-
 Environment variables override local credentials:
 - `CLAWAPPS_ACCESS_TOKEN` — Access token
 - `CLAWAPPS_REFRESH_TOKEN` — Refresh token
-- `CLAWAPPS_RELAY_URL` — Custom relay endpoint (for development)
+- `CLAWAPPS_RELAY_URL` — Custom relay endpoint
 
 ## Development
 
 ```bash
-npm install          # Install dependencies
-npm run build        # Compile TypeScript
-npm run dev          # Watch mode
-node bin/claw.js     # Run locally
+npm install
+npm run build
+node bin/claw.js
 ```
 
 ## Requirements
 
-- **Node.js >= 18** (uses native `fetch`)
+- **Node.js >= 18**
 
 ## License
 

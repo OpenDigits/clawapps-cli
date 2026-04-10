@@ -1,82 +1,99 @@
 import chalk from 'chalk';
 import ora from 'ora';
-import { loadCredentials, saveCredentials } from '../lib/credentials.js';
-import { apiGet, type WrappedResponse } from '../lib/api.js';
+import qrcode from 'qrcode-terminal';
+import { saveCredentials, loadCredentials } from '../lib/credentials.js';
 import { CONFIG } from '../lib/config.js';
-import { ensureValidToken } from './helpers/ensure-token.js';
-import { createLoginCode, displayQRCode, pollAuthCode } from '../auth/qr-poll.js';
-import type { AuthCodeLoginResult, UserInfo } from '../lib/types.js';
+import { getBalance } from '../lib/relay-client.js';
+
+function relayUrl(path: string): string {
+  const base = process.env.CLAWAPPS_RELAY_URL || CONFIG.CLI_RELAY_BASE;
+  return `${base}${path}`;
+}
 
 export async function loginCommand(): Promise<void> {
-  // Check if already logged in, refresh token if needed
+  // Check if already logged in
   const existing = await loadCredentials();
   if (existing) {
     try {
-      const validated = await ensureValidToken(existing);
-      if (validated) {
-        const res = await apiGet<WrappedResponse<UserInfo>>(CONFIG.CLAW_ME, validated.access_token);
-        if (res.ok) {
-          const user = res.data.data;
-          console.log(chalk.green(`Already logged in as ${chalk.bold(user.email || user.name || 'user')}.`));
-          console.log(chalk.gray('Session refreshed. Run `clawapps logout` first to switch accounts.'));
-          return;
-        }
-      }
+      const balance = await getBalance(existing.access_token);
+      console.log(chalk.green(`Already logged in as ${chalk.bold(balance.display_name || 'user')}.`));
+      console.log(chalk.gray('Run `clawapps logout` first to switch accounts.'));
+      return;
     } catch {
-      // Token validation/refresh failed, continue with login
+      // Token invalid, continue with login
     }
   }
 
-  // Create login code via API and display QR code
-  let loginCode;
+  // Create login code via Relay
+  let loginCode: { code: string; expires_at: string; qr_url: string };
   try {
-    loginCode = await createLoginCode();
+    const res = await fetch(relayUrl('/auth/login-code'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    if (!res.ok) throw new Error(`Failed to create login code (${res.status})`);
+    loginCode = await res.json() as typeof loginCode;
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error(chalk.red(`\nFailed to create login code: ${message}`));
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(chalk.red(`Failed to create login code: ${msg}`));
     process.exit(1);
   }
 
+  // Display QR code
   console.log(chalk.gray('\nScan with WeChat to login:\n'));
-  displayQRCode(loginCode.qr_url);
+  qrcode.generate(loginCode.qr_url, { small: true }, (code: string) => {
+    console.log(code);
+  });
   console.log(chalk.gray(`\nOr visit: ${loginCode.qr_url}\n`));
-  console.log(chalk.yellow('Waiting for QR code verification (valid for 3 minutes)...\n'));
+  console.log(chalk.yellow('Waiting for WeChat verification (valid for 3 minutes)...\n'));
 
+  // Poll for verification
   const spinner = ora('Waiting for authentication...').start();
+  const pollInterval = 3000;
+  const timeout = 180000;
+  const startTime = Date.now();
 
   try {
-    const result = await pollAuthCode<AuthCodeLoginResult>(loginCode.code, 'login');
+    while (Date.now() - startTime < timeout) {
+      await new Promise(r => setTimeout(r, pollInterval));
 
-    // Save credentials
-    await saveCredentials({
-      provider: 'google', // web login handles provider selection
-      access_token: result.access_token,
-      refresh_token: result.refresh_token,
-      logged_in_at: new Date().toISOString(),
-    });
+      const res = await fetch(relayUrl(`/auth/poll?code=${encodeURIComponent(loginCode.code)}`));
+      const data = await res.json() as { code: number; message: string; data?: { access_token: string; refresh_token: string; display_name?: string } };
 
-    spinner.text = 'Fetching user info...';
+      if (data.code === 0 && data.data?.access_token) {
+        // Login successful
+        await saveCredentials({
+          provider: 'wechat',
+          access_token: data.data.access_token,
+          refresh_token: data.data.refresh_token,
+          logged_in_at: new Date().toISOString(),
+        });
 
-    const userRes = await apiGet<WrappedResponse<UserInfo>>(CONFIG.CLAW_ME, result.access_token);
+        spinner.stop();
+        console.log(chalk.green('\nLogin successful!'));
+        if (data.data.display_name) {
+          console.log(chalk.gray(`User: ${data.data.display_name}`));
+        }
+        return;
+      }
+
+      if (data.code === 4008) {
+        spinner.stop();
+        console.error(chalk.red('\nQR code expired. Run `clawapps login` to try again.'));
+        process.exit(1);
+      }
+
+      // code 4013 = waiting for verification, keep polling
+    }
 
     spinner.stop();
-
-    console.log(chalk.green('\nLogin successful!'));
-    console.log(chalk.gray(`Access Token: ${result.access_token}`));
-
-    if (userRes.ok) {
-      const user = userRes.data.data;
-      const name = user.name || user.email || 'user';
-      console.log(chalk.gray(`User: ${name}`));
-      if (user.email) {
-        console.log(chalk.gray(`Email: ${user.email}`));
-      }
-    }
+    console.error(chalk.red('\nLogin timed out. Run `clawapps login` to try again.'));
+    process.exit(1);
   } catch (err) {
     spinner.stop();
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error(chalk.red(`\nLogin failed: ${message}`));
-    console.error(chalk.yellow('QR code has expired. Please run `clawapps login` to generate a new one.'));
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(chalk.red(`\nLogin failed: ${msg}`));
     process.exit(1);
   }
 }
