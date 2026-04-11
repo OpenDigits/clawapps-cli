@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import ora from 'ora';
 import qrcode from 'qrcode-terminal';
+import { readFileSync } from 'node:fs';
 import { loadCredentials } from '../lib/credentials.js';
 import { getBalance } from '../lib/relay-client.js';
 import { createLoginCode, pollLoginCode } from '../lib/login-service.js';
@@ -45,12 +46,13 @@ export async function loginCommand(options: { json?: boolean }): Promise<void> {
 
   // Display login info
   if (isJson) {
+    // QR text first (visible in output), then JSON
+    process.stdout.write(readFileSync(loginCode.qr_text, 'utf-8'));
     jsonOut({
       event: 'login_url',
       url: loginCode.qr_url,
       qr_image: loginCode.qr_image,
       expires_at: loginCode.expires_at,
-      instructions: 'Show the URL and QR image to the user. They need to open the link or scan the QR code with WeChat to authenticate.',
     });
   } else {
     console.log(chalk.bold('\nLogin URL:'));
