@@ -1,4 +1,10 @@
 import { Command } from 'commander';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf-8'));
 import { loginCommand } from './commands/login.js';
 import { loginCodeCommand } from './commands/login-code.js';
 import { loginPollCommand } from './commands/login-poll.js';
@@ -13,7 +19,7 @@ const program = new Command();
 program
   .name('clawapps')
   .description('ClawApps CLI - AI agent platform client')
-  .version('0.6.0');
+  .version(pkg.version);
 
 // Auth
 program
