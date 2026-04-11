@@ -72,6 +72,13 @@ export async function sendCommand(message: string, options: SendOptions) {
           }
           break;
 
+        case 'formatted':
+          // Agent mode: forward structured data
+          if (!isHuman) {
+            process.stdout.write(JSON.stringify({ event: 'formatted', ...evt.data }) + '\n');
+          }
+          break;
+
         case 'mode_change':
           if (!isHuman) {
             process.stdout.write(JSON.stringify({ event: 'mode_change', ...evt.data }) + '\n');
