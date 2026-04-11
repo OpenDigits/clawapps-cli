@@ -1,3 +1,4 @@
+import WebSocket from 'ws';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
@@ -11,8 +12,7 @@ function relayHttpUrl(path: string): string {
 
 function relayWsUrl(token: string): string {
   const base = process.env.CLAWAPPS_RELAY_URL || CONFIG.CLI_RELAY_BASE;
-  // Convert https://.../ to wss://.../ws?token=xxx
-  const wsBase = base.replace(/^http/, 'ws');
+  const wsBase = base.replace(/^https/, 'wss').replace(/^http/, 'ws');
   return `${wsBase}/ws?token=${encodeURIComponent(token)}`;
 }
 
@@ -24,7 +24,7 @@ export interface RelayMessage {
 }
 
 /**
- * Connect to Relay via WebSocket. Returns helpers to send/receive messages.
+ * Connect to Relay via WebSocket.
  */
 export async function connectRelay(token: string): Promise<RelayConnection> {
   const wsUrl = relayWsUrl(token);
@@ -32,15 +32,15 @@ export async function connectRelay(token: string): Promise<RelayConnection> {
   const ws = await new Promise<WebSocket>((resolve, reject) => {
     const socket = new WebSocket(wsUrl);
     const timeout = setTimeout(() => {
-      socket.close();
+      socket.terminate();
       reject(new Error('Connection timeout'));
     }, CONFIG.CLI_CONNECT_TIMEOUT_MS);
 
-    socket.addEventListener('open', () => { clearTimeout(timeout); resolve(socket); });
-    socket.addEventListener('error', (e) => { clearTimeout(timeout); reject(new Error('Connection failed')); });
+    socket.on('open', () => { clearTimeout(timeout); resolve(socket); });
+    socket.on('error', (err) => { clearTimeout(timeout); reject(new Error(`Connection failed: ${err.message}`)); });
   });
 
-  // Wait for initial {type:"connected"} from Relay
+  // Wait for {type:"connected"} from Relay
   const connMsg = await waitForMessage(ws, 'connected', CONFIG.CLI_CONNECT_TIMEOUT_MS);
 
   return new RelayConnection(ws, connMsg.session_id as string, connMsg.mode as string);
@@ -49,22 +49,22 @@ export async function connectRelay(token: string): Promise<RelayConnection> {
 function waitForMessage(ws: WebSocket, expectedType: string, timeoutMs: number): Promise<RelayMessage> {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
-      ws.removeEventListener('message', handler);
+      ws.removeListener('message', handler);
       reject(new Error(`Timeout waiting for "${expectedType}"`));
     }, timeoutMs);
 
-    function handler(event: MessageEvent) {
+    function handler(data: WebSocket.RawData) {
       try {
-        const msg = JSON.parse(event.data as string);
+        const msg = JSON.parse(data.toString());
         if (msg.type === expectedType) {
           clearTimeout(timeout);
-          ws.removeEventListener('message', handler);
+          ws.removeListener('message', handler);
           resolve(msg);
         }
       } catch { /* keep waiting */ }
     }
 
-    ws.addEventListener('message', handler);
+    ws.on('message', handler);
   });
 }
 
@@ -79,9 +79,6 @@ export class RelayConnection {
     this.mode = mode;
   }
 
-  /**
-   * Send an action to Bridge via Relay.
-   */
   send(action: Record<string, unknown>) {
     if (this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(action));
@@ -89,33 +86,32 @@ export class RelayConnection {
   }
 
   /**
-   * Send a message and yield Bridge responses until complete.
+   * Send a message and yield responses until complete/error.
    */
   async *sendMessage(content: string): AsyncGenerator<RelayMessage> {
     this.send({ action: 'message', content });
 
-    const messageQueue: RelayMessage[] = [];
+    const queue: RelayMessage[] = [];
     let resolve: (() => void) | null = null;
     let done = false;
 
-    const handler = (event: MessageEvent) => {
+    const handler = (data: WebSocket.RawData) => {
       try {
-        const msg = JSON.parse(event.data as string) as RelayMessage;
-        messageQueue.push(msg);
+        const msg = JSON.parse(data.toString()) as RelayMessage;
+        queue.push(msg);
         if (resolve) { resolve(); resolve = null; }
       } catch { /* ignore */ }
     };
 
-    this.ws.addEventListener('message', handler);
+    this.ws.on('message', handler);
 
     try {
       while (!done) {
-        if (messageQueue.length === 0) {
+        if (queue.length === 0) {
           await new Promise<void>((r) => { resolve = r; });
         }
-
-        while (messageQueue.length > 0) {
-          const msg = messageQueue.shift()!;
+        while (queue.length > 0) {
+          const msg = queue.shift()!;
           yield msg;
           if (msg.type === 'complete' || msg.type === 'error') {
             done = true;
@@ -124,22 +120,22 @@ export class RelayConnection {
         }
       }
     } finally {
-      this.ws.removeEventListener('message', handler);
+      this.ws.removeListener('message', handler);
     }
   }
 
   /**
-   * Listen for all messages (including push messages).
+   * Listen for all messages (including push).
    */
   async *listen(): AsyncGenerator<RelayMessage> {
-    const messageQueue: RelayMessage[] = [];
+    const queue: RelayMessage[] = [];
     let resolve: (() => void) | null = null;
     let closed = false;
 
-    const handler = (event: MessageEvent) => {
+    const handler = (data: WebSocket.RawData) => {
       try {
-        const msg = JSON.parse(event.data as string) as RelayMessage;
-        messageQueue.push(msg);
+        const msg = JSON.parse(data.toString()) as RelayMessage;
+        queue.push(msg);
         if (resolve) { resolve(); resolve = null; }
       } catch { /* ignore */ }
     };
@@ -149,34 +145,28 @@ export class RelayConnection {
       if (resolve) { resolve(); resolve = null; }
     };
 
-    this.ws.addEventListener('message', handler);
-    this.ws.addEventListener('close', closeHandler);
+    this.ws.on('message', handler);
+    this.ws.on('close', closeHandler);
 
     try {
       while (!closed) {
-        if (messageQueue.length === 0) {
+        if (queue.length === 0) {
           await new Promise<void>((r) => { resolve = r; });
         }
-        while (messageQueue.length > 0) {
-          yield messageQueue.shift()!;
+        while (queue.length > 0) {
+          yield queue.shift()!;
         }
       }
     } finally {
-      this.ws.removeEventListener('message', handler);
-      this.ws.removeEventListener('close', closeHandler);
+      this.ws.removeListener('message', handler);
+      this.ws.removeListener('close', closeHandler);
     }
   }
 
-  /**
-   * Stop current processing.
-   */
   stop() {
     this.send({ action: 'stop' });
   }
 
-  /**
-   * Close the connection.
-   */
   close() {
     if (this.ws.readyState === WebSocket.OPEN) {
       this.ws.close(1000, 'Client close');
@@ -184,19 +174,17 @@ export class RelayConnection {
   }
 }
 
-// --- HTTP endpoints (balance, no WS needed) ---
+// --- HTTP endpoints ---
 
 export async function getBalance(token: string): Promise<RelayBalanceResponse> {
   const res = await fetch(relayHttpUrl('/balance'), {
     method: 'GET',
     headers: { 'Authorization': `Bearer ${token}` },
   });
-
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: res.statusText })) as Record<string, string>;
     throw new Error(err.message || `Balance check failed (${res.status})`);
   }
-
   return await res.json() as RelayBalanceResponse;
 }
 
@@ -219,7 +207,6 @@ export async function saveSession(info: SessionInfo): Promise<void> {
   const store = await loadSessions();
   store.sessions[info.session_id] = info;
   store.last_session_id = info.session_id;
-
   const dir = join(homedir(), CONFIG.CREDENTIALS_DIR);
   await mkdir(dir, { recursive: true });
   await writeFile(sessionsPath(), JSON.stringify(store, null, 2), 'utf-8');
