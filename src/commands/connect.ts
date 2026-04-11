@@ -11,7 +11,7 @@ import {
 
 interface ConnectOptions {
   sessionId?: string;
-  json?: boolean;
+  human?: boolean;
   timeout?: string;
 }
 
@@ -20,13 +20,12 @@ function jsonOut(obj: Record<string, unknown>) {
 }
 
 export async function connectCommand(options: ConnectOptions) {
-  const isJson = !!options.json;
+  const isHuman = !!options.human;
 
   try {
     const creds = await resolveCredentials();
     const token = creds.access_token;
 
-    // Create or reuse session
     let sessionId: string;
     if (options.sessionId) {
       sessionId = options.sessionId;
@@ -36,40 +35,35 @@ export async function connectCommand(options: ConnectOptions) {
       await saveSession({ session_id: sessionId, created_at: new Date().toISOString() });
     }
 
-    if (isJson) {
-      jsonOut({ event: 'session_created', session_id: sessionId });
-      jsonOut({ event: 'ready' });
-    } else {
+    if (isHuman) {
       console.log(chalk.green(`Connected to session: ${sessionId}`));
       console.log(chalk.gray('Type your message and press Enter. Use Ctrl+C to exit.\n'));
+    } else {
+      jsonOut({ event: 'session_created', session_id: sessionId });
+      jsonOut({ event: 'ready' });
     }
 
-    // Handle graceful shutdown
     let shuttingDown = false;
     const cleanup = async () => {
       if (shuttingDown) return;
       shuttingDown = true;
-      try {
-        await closeSession(token, sessionId);
-      } catch { /* ignore */ }
+      try { await closeSession(token, sessionId); } catch { /* ignore */ }
       process.exit(0);
     };
     process.on('SIGINT', cleanup);
     process.on('SIGTERM', cleanup);
 
-    if (isJson) {
-      // JSON mode: read NDJSON from stdin
-      await jsonMode(token, sessionId);
-    } else {
-      // Interactive mode: readline prompt
+    if (isHuman) {
       await interactiveMode(token, sessionId);
+    } else {
+      await jsonMode(token, sessionId);
     }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (isJson) {
-      jsonOut({ event: 'error', code: 'CLI_ERROR', message: msg });
-    } else {
+    if (isHuman) {
       console.error(chalk.red(msg));
+    } else {
+      jsonOut({ event: 'error', code: 'CLI_ERROR', message: msg });
     }
     process.exit(msg.includes('authenticated') || msg.includes('expired') ? 2 : 1);
   }
@@ -109,7 +103,7 @@ async function jsonMode(token: string, sessionId: string) {
 async function interactiveMode(token: string, sessionId: string) {
   const rl = createInterface({
     input: process.stdin,
-    output: process.stderr, // prompts to stderr, data to stdout
+    output: process.stderr,
     prompt: chalk.cyan('> '),
   });
 
@@ -117,14 +111,8 @@ async function interactiveMode(token: string, sessionId: string) {
 
   for await (const line of rl) {
     const input = line.trim();
-    if (!input) {
-      rl.prompt();
-      continue;
-    }
-
-    if (input.toLowerCase() === '/quit' || input.toLowerCase() === '/exit') {
-      break;
-    }
+    if (!input) { rl.prompt(); continue; }
+    if (input.toLowerCase() === '/quit' || input.toLowerCase() === '/exit') break;
 
     if (input.toLowerCase() === '/stop') {
       await stopProcessing(token, sessionId).catch(() => {});
@@ -145,9 +133,7 @@ async function interactiveMode(token: string, sessionId: string) {
           case 'cost': {
             const used = evt.data.credits_used as number;
             const after = evt.data.balance_after as number;
-            if (used > 0) {
-              console.log(chalk.gray(`[Credits: -${used} | Balance: ${after}]`));
-            }
+            if (used > 0) console.log(chalk.gray(`[Credits: -${used} | Balance: ${after}]`));
             break;
           }
           case 'error':

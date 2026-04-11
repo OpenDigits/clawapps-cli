@@ -22,7 +22,7 @@ program
 program
   .command('login')
   .description('Log in via WeChat QR code')
-  .option('--json', 'Output as JSON (for AI agent integration)')
+  .option('--human', 'Human-friendly terminal output')
   .action(loginCommand);
 
 program
@@ -34,7 +34,7 @@ program
   .command('connect')
   .description('Connect to agent workspace (persistent session)')
   .option('--session-id <id>', 'Resume a specific session')
-  .option('--json', 'JSON I/O mode (NDJSON stdin/stdout)')
+  .option('--human', 'Interactive terminal mode')
   .option('--timeout <ms>', 'Connection timeout in milliseconds')
   .action(connectCommand);
 
@@ -44,7 +44,7 @@ program
   .argument('<message>', 'Message to send')
   .option('--session-id <id>', 'Use a specific session')
   .option('--new-session', 'Force create a new session')
-  .option('--json', 'Output as JSON')
+  .option('--human', 'Human-friendly terminal output')
   .option('--timeout <ms>', 'Response timeout in milliseconds')
   .action(sendCommand);
 
@@ -52,13 +52,13 @@ program
   .command('sessions')
   .description('List or manage workspace sessions')
   .option('--clear', 'Clear session history')
-  .option('--json', 'Output as JSON')
+  .option('--human', 'Human-friendly terminal output')
   .action(sessionsCommand);
 
 program
   .command('balance')
   .description('Check credit balance')
-  .option('--json', 'Output as JSON')
+  .option('--human', 'Human-friendly terminal output')
   .action(balanceCommand);
 
 program.parse();
