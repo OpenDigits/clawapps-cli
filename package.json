@@ -1,6 +1,6 @@
 {
   "name": "@clawapps/cli",
-  "version": "0.6.0",
+  "version": "0.6.2",
   "description": "ClawApps CLI - AI agent platform client",
   "type": "module",
   "bin": {
