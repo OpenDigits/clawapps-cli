@@ -2,92 +2,192 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { CONFIG } from './config.js';
-import { parseSSE } from './sse-parser.js';
-import type { RelaySessionResponse, RelayBalanceResponse, SSEEvent, SessionStore, SessionInfo } from './types.js';
+import type { RelayBalanceResponse, SessionInfo, SessionStore } from './types.js';
 
-function relayUrl(path: string): string {
+function relayHttpUrl(path: string): string {
   const base = process.env.CLAWAPPS_RELAY_URL || CONFIG.CLI_RELAY_BASE;
   return `${base}${path}`;
 }
 
-function authHeaders(token: string): Record<string, string> {
-  return {
-    'Authorization': `Bearer ${token}`,
-    'Content-Type': 'application/json',
-  };
+function relayWsUrl(token: string): string {
+  const base = process.env.CLAWAPPS_RELAY_URL || CONFIG.CLI_RELAY_BASE;
+  // Convert https://.../ to wss://.../ws?token=xxx
+  const wsBase = base.replace(/^http/, 'ws');
+  return `${wsBase}/ws?token=${encodeURIComponent(token)}`;
+}
+
+// --- WebSocket relay connection ---
+
+export interface RelayMessage {
+  type: string;
+  [key: string]: unknown;
 }
 
 /**
- * Create a new session on the Relay.
+ * Connect to Relay via WebSocket. Returns helpers to send/receive messages.
  */
-export async function createSession(token: string): Promise<RelaySessionResponse> {
-  const res = await fetch(relayUrl('/session'), {
-    method: 'POST',
-    headers: authHeaders(token),
-    body: '{}',
+export async function connectRelay(token: string): Promise<RelayConnection> {
+  const wsUrl = relayWsUrl(token);
+
+  const ws = await new Promise<WebSocket>((resolve, reject) => {
+    const socket = new WebSocket(wsUrl);
+    const timeout = setTimeout(() => {
+      socket.close();
+      reject(new Error('Connection timeout'));
+    }, CONFIG.CLI_CONNECT_TIMEOUT_MS);
+
+    socket.addEventListener('open', () => { clearTimeout(timeout); resolve(socket); });
+    socket.addEventListener('error', (e) => { clearTimeout(timeout); reject(new Error('Connection failed')); });
   });
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ message: res.statusText })) as Record<string, string>;
-    throw new Error(err.message || `Session creation failed (${res.status})`);
+  // Wait for initial {type:"connected"} from Relay
+  const connMsg = await waitForMessage(ws, 'connected', CONFIG.CLI_CONNECT_TIMEOUT_MS);
+
+  return new RelayConnection(ws, connMsg.session_id as string, connMsg.mode as string);
+}
+
+function waitForMessage(ws: WebSocket, expectedType: string, timeoutMs: number): Promise<RelayMessage> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      ws.removeEventListener('message', handler);
+      reject(new Error(`Timeout waiting for "${expectedType}"`));
+    }, timeoutMs);
+
+    function handler(event: MessageEvent) {
+      try {
+        const msg = JSON.parse(event.data as string);
+        if (msg.type === expectedType) {
+          clearTimeout(timeout);
+          ws.removeEventListener('message', handler);
+          resolve(msg);
+        }
+      } catch { /* keep waiting */ }
+    }
+
+    ws.addEventListener('message', handler);
+  });
+}
+
+export class RelayConnection {
+  ws: WebSocket;
+  sessionId: string;
+  mode: string;
+
+  constructor(ws: WebSocket, sessionId: string, mode: string) {
+    this.ws = ws;
+    this.sessionId = sessionId;
+    this.mode = mode;
   }
 
-  return await res.json() as RelaySessionResponse;
-}
-
-/**
- * Send a message and yield SSE events as they arrive.
- */
-export async function* sendMessage(
-  token: string,
-  sessionId: string,
-  content: string,
-): AsyncGenerator<SSEEvent> {
-  const res = await fetch(relayUrl(`/session/${sessionId}/message`), {
-    method: 'POST',
-    headers: authHeaders(token),
-    body: JSON.stringify({ content }),
-    signal: AbortSignal.timeout(CONFIG.CLI_MESSAGE_TIMEOUT_MS),
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ message: res.statusText })) as Record<string, string>;
-    throw new Error(err.message || `Send failed (${res.status})`);
+  /**
+   * Send an action to Bridge via Relay.
+   */
+  send(action: Record<string, unknown>) {
+    if (this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(action));
+    }
   }
 
-  if (!res.body) {
-    throw new Error('No response body (SSE stream expected)');
+  /**
+   * Send a message and yield Bridge responses until complete.
+   */
+  async *sendMessage(content: string): AsyncGenerator<RelayMessage> {
+    this.send({ action: 'message', content });
+
+    const messageQueue: RelayMessage[] = [];
+    let resolve: (() => void) | null = null;
+    let done = false;
+
+    const handler = (event: MessageEvent) => {
+      try {
+        const msg = JSON.parse(event.data as string) as RelayMessage;
+        messageQueue.push(msg);
+        if (resolve) { resolve(); resolve = null; }
+      } catch { /* ignore */ }
+    };
+
+    this.ws.addEventListener('message', handler);
+
+    try {
+      while (!done) {
+        if (messageQueue.length === 0) {
+          await new Promise<void>((r) => { resolve = r; });
+        }
+
+        while (messageQueue.length > 0) {
+          const msg = messageQueue.shift()!;
+          yield msg;
+          if (msg.type === 'complete' || msg.type === 'error') {
+            done = true;
+            break;
+          }
+        }
+      }
+    } finally {
+      this.ws.removeEventListener('message', handler);
+    }
   }
 
-  yield* parseSSE(res.body);
+  /**
+   * Listen for all messages (including push messages).
+   */
+  async *listen(): AsyncGenerator<RelayMessage> {
+    const messageQueue: RelayMessage[] = [];
+    let resolve: (() => void) | null = null;
+    let closed = false;
+
+    const handler = (event: MessageEvent) => {
+      try {
+        const msg = JSON.parse(event.data as string) as RelayMessage;
+        messageQueue.push(msg);
+        if (resolve) { resolve(); resolve = null; }
+      } catch { /* ignore */ }
+    };
+
+    const closeHandler = () => {
+      closed = true;
+      if (resolve) { resolve(); resolve = null; }
+    };
+
+    this.ws.addEventListener('message', handler);
+    this.ws.addEventListener('close', closeHandler);
+
+    try {
+      while (!closed) {
+        if (messageQueue.length === 0) {
+          await new Promise<void>((r) => { resolve = r; });
+        }
+        while (messageQueue.length > 0) {
+          yield messageQueue.shift()!;
+        }
+      }
+    } finally {
+      this.ws.removeEventListener('message', handler);
+      this.ws.removeEventListener('close', closeHandler);
+    }
+  }
+
+  /**
+   * Stop current processing.
+   */
+  stop() {
+    this.send({ action: 'stop' });
+  }
+
+  /**
+   * Close the connection.
+   */
+  close() {
+    if (this.ws.readyState === WebSocket.OPEN) {
+      this.ws.close(1000, 'Client close');
+    }
+  }
 }
 
-/**
- * Stop processing for a session.
- */
-export async function stopProcessing(token: string, sessionId: string): Promise<void> {
-  await fetch(relayUrl(`/session/${sessionId}/stop`), {
-    method: 'POST',
-    headers: authHeaders(token),
-    body: '{}',
-  });
-}
+// --- HTTP endpoints (balance, no WS needed) ---
 
-/**
- * Close a session.
- */
-export async function closeSession(token: string, sessionId: string): Promise<void> {
-  await fetch(relayUrl(`/session/${sessionId}`), {
-    method: 'DELETE',
-    headers: { 'Authorization': `Bearer ${token}` },
-  });
-}
-
-/**
- * Get credit balance.
- */
 export async function getBalance(token: string): Promise<RelayBalanceResponse> {
-  const res = await fetch(relayUrl('/balance'), {
+  const res = await fetch(relayHttpUrl('/balance'), {
     method: 'GET',
     headers: { 'Authorization': `Bearer ${token}` },
   });

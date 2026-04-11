@@ -1,13 +1,7 @@
 import chalk from 'chalk';
 import { createInterface } from 'node:readline';
 import { resolveCredentials } from './helpers/resolve-credentials.js';
-import {
-  createSession,
-  sendMessage,
-  stopProcessing,
-  closeSession,
-  saveSession,
-} from '../lib/relay-client.js';
+import { connectRelay, saveSession, type RelayConnection } from '../lib/relay-client.js';
 
 interface ConnectOptions {
   sessionId?: string;
@@ -24,39 +18,33 @@ export async function connectCommand(options: ConnectOptions) {
 
   try {
     const creds = await resolveCredentials();
-    const token = creds.access_token;
+    const relay = await connectRelay(creds.access_token);
 
-    let sessionId: string;
-    if (options.sessionId) {
-      sessionId = options.sessionId;
-    } else {
-      const session = await createSession(token);
-      sessionId = session.session_id;
-      await saveSession({ session_id: sessionId, created_at: new Date().toISOString() });
-    }
+    await saveSession({ session_id: relay.sessionId, created_at: new Date().toISOString() });
 
     if (isHuman) {
-      console.log(chalk.green(`Connected to session: ${sessionId}`));
+      console.log(chalk.green(`Connected to session: ${relay.sessionId}`));
       console.log(chalk.gray('Type your message and press Enter. Use Ctrl+C to exit.\n'));
     } else {
-      jsonOut({ event: 'session_created', session_id: sessionId });
+      jsonOut({ event: 'session_created', session_id: relay.sessionId });
       jsonOut({ event: 'ready' });
     }
 
+    // Graceful shutdown
     let shuttingDown = false;
-    const cleanup = async () => {
+    const cleanup = () => {
       if (shuttingDown) return;
       shuttingDown = true;
-      try { await closeSession(token, sessionId); } catch { /* ignore */ }
+      relay.close();
       process.exit(0);
     };
     process.on('SIGINT', cleanup);
     process.on('SIGTERM', cleanup);
 
     if (isHuman) {
-      await interactiveMode(token, sessionId);
+      await interactiveMode(relay);
     } else {
-      await jsonMode(token, sessionId);
+      await jsonMode(relay);
     }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -69,8 +57,16 @@ export async function connectCommand(options: ConnectOptions) {
   }
 }
 
-async function jsonMode(token: string, sessionId: string) {
+async function jsonMode(relay: RelayConnection) {
+  // Read commands from stdin, send to relay
   const rl = createInterface({ input: process.stdin });
+
+  // Also listen for push messages from Bridge
+  const pushListener = (async () => {
+    for await (const msg of relay.listen()) {
+      jsonOut({ event: msg.type, ...msg });
+    }
+  })();
 
   for await (const line of rl) {
     if (!line.trim()) continue;
@@ -84,28 +80,52 @@ async function jsonMode(token: string, sessionId: string) {
     }
 
     if (cmd.action === 'stop') {
-      await stopProcessing(token, sessionId).catch(() => {});
+      relay.stop();
       jsonOut({ event: 'stopped' });
-      continue;
+    } else if (cmd.action === 'message' && cmd.content) {
+      relay.send({ action: 'message', content: cmd.content });
+      // Responses come through the pushListener
+    } else {
+      jsonOut({ event: 'error', code: 'UNKNOWN_ACTION', message: `Unknown action: ${cmd.action}` });
     }
-
-    if (cmd.action === 'message' && cmd.content) {
-      for await (const evt of sendMessage(token, sessionId, cmd.content)) {
-        jsonOut({ event: evt.event, ...evt.data });
-      }
-      continue;
-    }
-
-    jsonOut({ event: 'error', code: 'UNKNOWN_ACTION', message: `Unknown action: ${cmd.action}` });
   }
 }
 
-async function interactiveMode(token: string, sessionId: string) {
+async function interactiveMode(relay: RelayConnection) {
   const rl = createInterface({
     input: process.stdin,
     output: process.stderr,
     prompt: chalk.cyan('> '),
   });
+
+  // Listen for Bridge messages and display them
+  const pushListener = (async () => {
+    for await (const msg of relay.listen()) {
+      switch (msg.type) {
+        case 'assistant_text':
+        case 'assistant':
+          process.stdout.write(String(msg.content || msg.text || ''));
+          break;
+        case 'formatted':
+          if (msg.intro) process.stdout.write(String(msg.intro));
+          break;
+        case 'complete':
+          process.stdout.write('\n');
+          rl.prompt();
+          break;
+        case 'cost': {
+          const used = msg.credits_used as number;
+          const after = msg.balance_after as number;
+          if (used > 0) console.log(chalk.gray(`[Credits: -${used} | Balance: ${after}]`));
+          break;
+        }
+        case 'error':
+          console.error(chalk.red(`Error: ${msg.message}`));
+          rl.prompt();
+          break;
+      }
+    }
+  })();
 
   rl.prompt();
 
@@ -115,36 +135,15 @@ async function interactiveMode(token: string, sessionId: string) {
     if (input.toLowerCase() === '/quit' || input.toLowerCase() === '/exit') break;
 
     if (input.toLowerCase() === '/stop') {
-      await stopProcessing(token, sessionId).catch(() => {});
+      relay.stop();
       console.log(chalk.yellow('Stopped.'));
       rl.prompt();
       continue;
     }
 
-    try {
-      for await (const evt of sendMessage(token, sessionId, input)) {
-        switch (evt.event) {
-          case 'text':
-            process.stdout.write(String(evt.data.content || ''));
-            break;
-          case 'complete':
-            process.stdout.write('\n');
-            break;
-          case 'cost': {
-            const used = evt.data.credits_used as number;
-            const after = evt.data.balance_after as number;
-            if (used > 0) console.log(chalk.gray(`[Credits: -${used} | Balance: ${after}]`));
-            break;
-          }
-          case 'error':
-            console.error(chalk.red(`Error: ${evt.data.message}`));
-            break;
-        }
-      }
-    } catch (err: unknown) {
-      console.error(chalk.red(err instanceof Error ? err.message : String(err)));
-    }
-
-    rl.prompt();
+    relay.send({ action: 'message', content: input });
+    // Response comes through pushListener
   }
+
+  relay.close();
 }
