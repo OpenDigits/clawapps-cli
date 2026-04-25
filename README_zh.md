@@ -1,11 +1,12 @@
 # @clawapps/cli
 
+[![npm version](https://img.shields.io/npm/v/@clawapps/cli.svg)](https://www.npmjs.com/package/@clawapps/cli)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-green.svg)](https://nodejs.org/)
 
 **[English](README.md)**
 
-[ClawApps](https://www.clawapps.ai) 平台的命令行认证工具。通过终端使用 Google 或 Apple 登录，Token 存储在本地供 AI Agent 和脚本使用。
+[ClawApps](https://www.clawapps.ai) AI Agent 平台的命令行客户端。通过微信或 WhatsApp 登录，向 Agent 工作空间发送消息，并集成到 AI 助手与脚本中。
 
 ## 安装
 
@@ -13,136 +14,184 @@
 npm install -g @clawapps/cli
 ```
 
-> **还未发布到 npm？** 从源码安装：
-> ```bash
-> git clone git@github.com:ClawApps/clawapps-cli.git
-> cd clawapps-cli && npm install && npm run build && npm link
-> ```
+## 快速上手
+
+```bash
+# 1. 登录(选择一个 channel)
+clawapps login --wechat
+clawapps login --whatsapp
+
+# 2. 查询余额
+clawapps balance
+
+# 3. 单次发送
+clawapps send "你好"
+
+# 4. 或维持持久会话
+clawapps connect
+```
 
 ## 命令
 
-### `claw login`
+### `clawapps login --wechat | --whatsapp`
 
-使用 Google 或 Apple 登录。自动打开浏览器完成 OAuth，Token 存储在本地。
+从指定 channel 登录平台。CLI 输出登录链接,在浏览器中打开完成扫码 / 配对,CLI 自动检测成功并把凭证落到 `~/.clawapps/credentials.json`(权限 `0600`)。
+
+```text
+$ clawapps login --wechat
+
+ClawApps Login — WeChat
+
+Step 1. Open this link in your browser:
+
+    https://dev.clawapps.cn/wechat-login?cli_code=ABC123
+
+Step 2. Authenticate via WeChat.
+
+Waiting for you to scan… (link valid for 180 seconds)
+   150 seconds remaining
+
+✓ Login successful!
+
+  Welcome, Jay 👋
+  Channel:     WeChat
+  Credits:     5060.27
+  Membership:  pro
+
+🦞 已接入应用龙虾 ClawApps 平台，可以开始聊天找服务。
+```
+
+登录链接 3 分钟内有效。超时未扫码会以 `1` 退出。
+
+### `clawapps logout`
+
+清除本地凭证和会话历史。
+
+### `clawapps balance`
+
+返回用户积分。
 
 ```bash
-$ claw login
-? Choose login method: Google
-Opening browser for Google login...
-✔ Logged in as user@gmail.com
+$ clawapps balance
+{"credits":5060.27,"membership":"pro","display_name":"Jay"}
 ```
 
-### `claw whoami`
+### `clawapps send <message>`
 
-查看当前账户信息。Token 过期时自动刷新。
+发送一条消息到 Agent 工作空间,事件以 JSON 行的形式流式打印到 stdout(每行一个对象)。适合脚本和 AI Agent 集成。
 
 ```bash
-$ claw whoami
-ClawApps Account
-──────────────────────────────
-Name:     Username
-Email:    user@gmail.com
-ID:       xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-Provider: google
+$ clawapps send "Toronto 今天天气如何?"
+{"event":"session_created","session_id":"abc-123"}
+{"event":"text","content":"Toronto 今天 7°C,有雨。"}
+{"event":"cost","credits_used":0.42,"balance_after":5059.85}
+{"event":"complete","success":true,"mode":"chat"}
 ```
 
-### `claw logout`
+参数: `--session-id <id>` `--new-session` `--timeout <ms>`
 
-登出并清除本地凭证。
+### `clawapps connect`
+
+维持一个持久 WebSocket 会话。从 stdin 读 JSON 命令,事件流写到 stdout。
+
+stdin(每行一个 JSON 命令):
+
+```json
+{"action":"message","content":"你好"}
+{"action":"stop"}
+```
+
+stdout: 与 `send` 相同的事件流。
+
+参数: `--session-id <id>` `--timeout <ms>`
+
+### `clawapps sessions`
+
+列出或清空本地会话历史。
 
 ```bash
-$ claw logout
-Logged out successfully.
+$ clawapps sessions
+$ clawapps sessions --clear
 ```
 
-## 工作原理
+## 事件流参考
 
-```
-claw login
-  → 选择 Google 或 Apple
-  → 本地 HTTP 服务器启动 (localhost 随机端口)
-  → 浏览器打开 OAuth 授权
-  → 回调返回 Token 到本地服务器
-  → Token 交换: Google/Apple → OpenDigits → ClawApps
-  → 凭证保存到 ~/.clawapps/credentials.json (权限 0600)
-```
+`send` / `connect` 在 stdout 输出的 JSON 事件:
 
-**Google 流程**：隐式 OAuth → 本地回调页面从 URL hash 提取 Token → POST 到本地服务器 → 交换为 ClawApps Token。
+| Event             | 关键字段                                  | 说明                                |
+|-------------------|-------------------------------------------|-------------------------------------|
+| `session_created` | `session_id`                              | Relay 分配的 session ID             |
+| `ready`           | —                                         | (仅 `connect`) 准备好接收输入       |
+| `text`            | `content`                                 | 流式纯文本回复                      |
+| `formatted`       | `mode`, `intro`, `ui_tree`, `timing`      | 结构化 UI tree 输出                 |
+| `status` / `log`  | `state`, `level`, `message`               | 中间过程信号                        |
+| `mode_change`     | `mode`, `reason`                          | 工作空间切换 chat / task / role     |
+| `cost`            | `credits_used`, `balance_after`           | 单轮扣费                            |
+| `complete`        | `success`, `mode`, `usage`                | 单轮结束                            |
+| `error`           | `code`, `message`                         | CLI 或后端错误                      |
 
-**Apple 流程**：OpenDigits 处理 Apple OAuth → 重定向到本地回调，query 参数携带 Token → 交换为 ClawApps Token。
+## 凭证
 
-## 凭证存储
-
-Token 存储在 `~/.clawapps/credentials.json`，文件权限 `0600`。
+存储在 `~/.clawapps/credentials.json`,权限 `0600`:
 
 ```json
 {
-  "provider": "google",
+  "provider": "whatsapp",
   "access_token": "eyJ...",
   "refresh_token": "eyJ...",
-  "logged_in_at": "2026-02-24T11:11:35.871Z"
+  "expires_at": "2026-04-26T21:21:00.000Z",
+  "refresh_expires_at": "2026-05-25T21:21:00.000Z",
+  "user_id": "uuid",
+  "logged_in_at": "2026-04-25T21:21:00.000Z"
 }
 ```
 
-在脚本中使用：
+**自动刷新**: 任何命令在用 token 前会先检查 `expires_at`,剩余 < 10 分钟时透明调用 `/cli/v1/auth/refresh`,access + refresh 一起轮换。如果 refresh token 也过期,凭证被清空,引导用户重新登录。
+
+**环境变量覆盖**: 同时设置 `CLAWAPPS_ACCESS_TOKEN` + `CLAWAPPS_REFRESH_TOKEN` 时,CLI 跳过本地文件直接使用环境变量值。
+
+## 配置
+
+| 环境变量                  | 默认值                           | 说明                                       |
+|---------------------------|----------------------------------|--------------------------------------------|
+| `CLAWAPPS_API_URL`        | `https://dev-api.clawapps.ai`    | 平台 base URL(HTTP + WS 共用)             |
+| `CLAWAPPS_ACCESS_TOKEN`   | —                                | 用环境变量覆盖凭证文件(配合 refresh)      |
+| `CLAWAPPS_REFRESH_TOKEN`  | —                                | 用环境变量覆盖凭证文件(配合 access)       |
+
+所有端点都在同一个 base 下的 `/cli/v1/*`,没有独立 relay URL。
+
+## AI Agent 集成
+
+CLI 设计为可被 AI Agent(Claude / Codex 等)作为子进程调用:
 
 ```bash
-TOKEN=$(cat ~/.clawapps/credentials.json | jq -r .access_token)
-curl -H "Authorization: Bearer $TOKEN" https://api.clawapps.ai/api/v1/...
+clawapps send "帮我部署 app" | jq -c '.'
 ```
 
-## 项目结构
+每个事件是独立一行 JSON,无多行缓冲,无转义续行。需要长会话时用 `clawapps connect`,从 stdin 写 `{"action":"message",...}` 命令。
 
-```
-clawapps-cli/
-├── bin/claw.js                # 入口
-├── src/
-│   ├── index.ts               # Commander 命令注册
-│   ├── commands/
-│   │   ├── login.ts           # OAuth 流程编排
-│   │   ├── logout.ts          # 清除凭证
-│   │   └── whoami.ts          # 用户信息 (自动刷新 Token)
-│   ├── auth/
-│   │   ├── server.ts          # 本地 HTTP 回调服务器
-│   │   ├── google.ts          # Google OAuth URL 构建
-│   │   ├── apple.ts           # Apple OAuth URL 构建 (经由 OD)
-│   │   └── exchange.ts        # Token 交换 (OD → ClawApps)
-│   ├── lib/
-│   │   ├── config.ts          # API 端点 & 常量
-│   │   ├── credentials.ts     # 读写 ~/.clawapps/credentials.json
-│   │   ├── api.ts             # HTTP 请求封装
-│   │   └── types.ts           # TypeScript 接口定义
-│   └── html/
-│       ├── callback.ts        # OAuth 回调 HTML 模板
-│       └── logo-data.ts       # Logo (base64 内嵌)
-├── package.json
-└── tsconfig.json
+也可以通过环境变量绕过登录流程:
+
+```bash
+export CLAWAPPS_ACCESS_TOKEN="eyJ..."
+export CLAWAPPS_REFRESH_TOKEN="eyJ..."
+clawapps send "你好"
 ```
 
 ## 开发
 
 ```bash
-npm install          # 安装依赖
-npm run build        # 编译 TypeScript
-npm run dev          # 监听模式
-node bin/claw.js     # 本地运行
+git clone git@github.com:OpenDigits/clawapps-cli.git
+cd clawapps-cli
+npm install
+npm run build
+node bin/claw.js login --wechat
 ```
 
 ## 环境要求
 
-- **Node.js >= 18**（使用原生 `fetch`）
-
-## 相关项目
-
-- [clawapps-skill](https://github.com/ClawApps/clawapps-skill) — ClawApps 平台的 Agent Skill 插件
-
-## 参与贡献
-
-1. Fork 本仓库
-2. 创建特性分支（`git checkout -b feat/my-feature`）
-3. 提交更改（使用 [Conventional Commits](https://www.conventionalcommits.org/)）
-4. 推送并发起 Pull Request
+- **Node.js >= 18**(使用原生 `fetch`)
 
 ## 许可证
 
-[MIT](LICENSE) - Copyright 2026 ClawApps
+[MIT](LICENSE) — Copyright 2026 ClawApps

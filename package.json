@@ -1,6 +1,6 @@
 {
   "name": "@clawapps/cli",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "ClawApps CLI - AI agent platform client",
   "type": "module",
   "bin": {
@@ -26,13 +26,8 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "@inquirer/prompts": "^7.10.1",
     "chalk": "^5.6.2",
     "commander": "^14.0.3",
-    "open": "^11.0.0",
-    "ora": "^8.2.0",
-    "qrcode": "^1.5.4",
-    "qrcode-terminal": "^0.12.0",
     "ws": "^8.20.0"
   },
   "devDependencies": {

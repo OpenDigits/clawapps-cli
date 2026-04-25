@@ -21,8 +21,9 @@ program
 
 program
   .command('login')
-  .description('Log in via WeChat QR code')
-  .option('--human', 'Human-friendly terminal output')
+  .description('Log in via WeChat or WhatsApp')
+  .option('--wechat', 'Log in via WeChat')
+  .option('--whatsapp', 'Log in via WhatsApp')
   .action(loginCommand);
 
 program
@@ -34,7 +35,6 @@ program
   .command('connect')
   .description('Connect to agent workspace (persistent session)')
   .option('--session-id <id>', 'Resume a specific session')
-  .option('--human', 'Interactive terminal mode')
   .option('--timeout <ms>', 'Connection timeout in milliseconds')
   .action(connectCommand);
 
@@ -44,7 +44,6 @@ program
   .argument('<message>', 'Message to send')
   .option('--session-id <id>', 'Use a specific session')
   .option('--new-session', 'Force create a new session')
-  .option('--human', 'Human-friendly terminal output')
   .option('--timeout <ms>', 'Response timeout in milliseconds')
   .action(sendCommand);
 
@@ -52,13 +51,11 @@ program
   .command('sessions')
   .description('List or manage workspace sessions')
   .option('--clear', 'Clear session history')
-  .option('--human', 'Human-friendly terminal output')
   .action(sessionsCommand);
 
 program
   .command('balance')
   .description('Check credit balance')
-  .option('--human', 'Human-friendly terminal output')
   .action(balanceCommand);
 
 program.parse();

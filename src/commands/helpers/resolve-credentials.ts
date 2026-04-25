@@ -1,4 +1,4 @@
-import { loadCredentials } from '../../lib/credentials.js';
+import { getFreshCredentials } from '../../lib/credentials.js';
 import type { Credentials } from '../../lib/types.js';
 
 /**
@@ -24,9 +24,9 @@ export async function resolveCredentials(): Promise<Credentials> {
     };
   }
 
-  const creds = await loadCredentials();
+  const creds = await getFreshCredentials();
   if (!creds) {
-    throw new Error('Not authenticated. Run `clawapps login` or set CLAWAPPS_ACCESS_TOKEN.');
+    throw new Error('Not authenticated. Run `clawapps login --wechat` or `clawapps login --whatsapp`, or set CLAWAPPS_ACCESS_TOKEN.');
   }
 
   return creds;

@@ -1,7 +1,12 @@
+export type LoginChannel = 'wechat' | 'whatsapp';
+
 export interface Credentials {
-  provider: string;
+  provider: LoginChannel | 'env';
   access_token: string;
   refresh_token: string;
+  expires_at?: string;
+  refresh_expires_at?: string;
+  user_id?: string;
   logged_in_at: string;
 }
 

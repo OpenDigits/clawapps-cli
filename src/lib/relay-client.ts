@@ -5,15 +5,15 @@ import { homedir } from 'node:os';
 import { CONFIG } from './config.js';
 import type { RelayBalanceResponse, SessionInfo, SessionStore } from './types.js';
 
-function relayHttpUrl(path: string): string {
-  const base = process.env.CLAWAPPS_RELAY_URL || CONFIG.CLI_RELAY_BASE;
-  return `${base}${path}`;
+function cliHttpUrl(path: string): string {
+  const base = process.env.CLAWAPPS_API_URL || CONFIG.BASE_URL;
+  return `${base}/cli/v1${path}`;
 }
 
-function relayWsUrl(token: string): string {
-  const base = process.env.CLAWAPPS_RELAY_URL || CONFIG.CLI_RELAY_BASE;
+function cliWsUrl(token: string): string {
+  const base = process.env.CLAWAPPS_API_URL || CONFIG.BASE_URL;
   const wsBase = base.replace(/^https/, 'wss').replace(/^http/, 'ws');
-  return `${wsBase}/ws?token=${encodeURIComponent(token)}`;
+  return `${wsBase}/cli/v1/ws?token=${encodeURIComponent(token)}`;
 }
 
 // --- WebSocket relay connection ---
@@ -27,7 +27,7 @@ export interface RelayMessage {
  * Connect to Relay via WebSocket.
  */
 export async function connectRelay(token: string): Promise<RelayConnection> {
-  const wsUrl = relayWsUrl(token);
+  const wsUrl = cliWsUrl(token);
 
   const ws = await new Promise<WebSocket>((resolve, reject) => {
     const socket = new WebSocket(wsUrl);
@@ -177,7 +177,7 @@ export class RelayConnection {
 // --- HTTP endpoints ---
 
 export async function getBalance(token: string): Promise<RelayBalanceResponse> {
-  const res = await fetch(relayHttpUrl('/balance'), {
+  const res = await fetch(cliHttpUrl('/balance'), {
     method: 'GET',
     headers: { 'Authorization': `Bearer ${token}` },
   });
