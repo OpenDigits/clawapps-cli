@@ -44,7 +44,7 @@ ClawApps Login — WhatsApp
 
 Step 1. Open this link in your browser:
 
-    https://dev.clawapps.ai/whatsapp-login?cli_code=ABC123
+    https://clawapps.ai/whatsapp-login?cli_code=ABC123
 
 Step 2. Authenticate via WhatsApp.
 
@@ -152,7 +152,7 @@ Stored at `~/.clawapps/credentials.json` with mode `0600`:
 
 | Variable                  | Default                          | Description                                  |
 |---------------------------|----------------------------------|----------------------------------------------|
-| `CLAWAPPS_API_URL`        | `https://api.clawapps.ai`        | Base URL for the platform (HTTP + WS). Set to `https://dev-api.clawapps.ai` for staging. |
+| `CLAWAPPS_API_URL`        | `https://api.clawapps.ai`        | Base URL for the platform (HTTP + WS).       |
 | `CLAWAPPS_ACCESS_TOKEN`   | —                                | Override credentials file (with refresh)     |
 | `CLAWAPPS_REFRESH_TOKEN`  | —                                | Override credentials file (with access)      |
 

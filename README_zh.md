@@ -44,7 +44,7 @@ ClawApps Login — WeChat
 
 Step 1. Open this link in your browser:
 
-    https://dev.clawapps.cn/wechat-login?cli_code=ABC123
+    https://clawapps.cn/wechat-login?cli_code=ABC123
 
 Step 2. Authenticate via WeChat.
 
@@ -154,7 +154,7 @@ $ clawapps sessions --clear
 
 | 环境变量                  | 默认值                           | 说明                                       |
 |---------------------------|----------------------------------|--------------------------------------------|
-| `CLAWAPPS_API_URL`        | `https://api.clawapps.ai`        | 平台 base URL(HTTP + WS 共用)。预发环境用 `https://dev-api.clawapps.ai` |
+| `CLAWAPPS_API_URL`        | `https://api.clawapps.ai`        | 平台 base URL(HTTP + WS 共用)             |
 | `CLAWAPPS_ACCESS_TOKEN`   | —                                | 用环境变量覆盖凭证文件(配合 refresh)      |
 | `CLAWAPPS_REFRESH_TOKEN`  | —                                | 用环境变量覆盖凭证文件(配合 access)       |
 

@@ -1,8 +1,6 @@
 export const CONFIG = {
   // Single base URL — CLI talks only to cli-relay (HTTP + WS) under /cli/v1/*.
   // Override via CLAWAPPS_API_URL.
-  // Prod default: https://api.clawapps.ai
-  // For dev/staging: CLAWAPPS_API_URL=https://dev-api.clawapps.ai
   BASE_URL: 'https://api.clawapps.ai',
 
   CLI_CONNECT_TIMEOUT_MS: 30 * 1000,
