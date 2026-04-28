@@ -31,6 +31,25 @@ clawapps send "你好"
 clawapps connect
 ```
 
+## 设计哲学
+
+CLI 只暴露**三层瘦命令**:
+- **系统层** — 登录、自检、本地配置
+- **消息层** — 跟你的 Agent 说话
+- **账号层** — 积分、档案、用量
+
+其余所有功能(角色、任务、作品、知识库、记忆)都活在 **Agent 内部**。直接用自然语言问就行:
+
+```bash
+clawapps send "列出我的所有角色"
+clawapps send "我现在有什么任务在跑?"
+clawapps send "@张老师 周末有空吗"
+clawapps send "我有哪些已上线的作品"
+clawapps send "搜知识库:关于 K8s 的笔记"
+```
+
+我们故意不做 `roles` / `tasks` / `apps` / `kb` 这些子命令 —— Agent 拥有完整上下文(记忆、关系、历史),回答比 API 列表更智能。
+
 ## 命令
 
 ### `clawapps login --wechat | --whatsapp`
@@ -114,6 +133,80 @@ $ clawapps sessions
 $ clawapps sessions --clear
 ```
 
+## v0.9 即将发布 (Preview)
+
+下列命令是 v0.9 路线图。下面这些 JSON 契约已经定稿,你可以现在就把 agent 接上。
+
+### `clawapps whoami`
+
+显示当前登录身份。
+
+```bash
+$ clawapps whoami
+{"user_id":"uuid","display_name":"Jay","membership":"pro","channel":"wechat","expires_at":"2026-04-29T21:21:00.000Z"}
+```
+
+### `clawapps doctor`
+
+跑一遍自检。Agent 测试管道时用来排错。
+
+```bash
+$ clawapps doctor
+{"check":"credentials","ok":true}
+{"check":"network","ok":true,"latency_ms":42}
+{"check":"relay_reachable","ok":true}
+{"check":"workspace_ready","ok":true}
+{"summary":"all checks passed"}
+```
+
+### `clawapps stop`
+
+中断 Agent 当前正在生成的回复 (向当前会话发 `{action:"stop"}`)。
+
+```bash
+$ clawapps stop
+{"event":"stopped"}
+```
+
+### `clawapps profile [--update <key=value>]`
+
+读取或更新账号档案。
+
+```bash
+$ clawapps profile
+{"display_name":"Jay","preferred_language":"zh","preferences":{"theme":"dark"}}
+
+$ clawapps profile --update display_name=Jacky
+{"event":"updated","display_name":"Jacky"}
+```
+
+### `clawapps usage [--period 7d] [--by mode]`
+
+查看积分用量统计。
+
+```bash
+$ clawapps usage --period 7d
+{"period":"7d","total_credits":42.5,"by_day":[{"date":"2026-04-22","credits":7.1}, ...]}
+
+$ clawapps usage --period 30d --by mode
+{"period":"30d","by_mode":{"chat":120.4,"task":35.7,"role":18.2}}
+```
+
+### `clawapps config <get|set> <key> [value]`
+
+持久化本地配置在 `~/.clawapps/config.json`。
+
+```bash
+$ clawapps config set base_url https://staging-api.clawapps.ai
+$ clawapps config get base_url
+{"key":"base_url","value":"https://staging-api.clawapps.ai"}
+```
+
+## 后续规划
+
+- `clawapps subscribe` — 管理订阅(返回支付链接,CLI 永不接信用卡)
+- `clawapps add-credit <amount>` — 充值(返回支付链接)
+
 ## 事件流参考
 
 `send` / `connect` 在 stdout 输出的 JSON 事件:
@@ -159,6 +252,17 @@ $ clawapps sessions --clear
 | `CLAWAPPS_REFRESH_TOKEN`  | —                                | 用环境变量覆盖凭证文件(配合 access)       |
 
 所有端点都在同一个 base 下的 `/cli/v1/*`,没有独立 relay URL。
+
+## 退出码
+
+| Code | 含义                                    |
+|------|-----------------------------------------|
+| 0    | 成功                                    |
+| 1    | 用户参数错(参数缺失/格式错)              |
+| 2    | 鉴权失败或失效                          |
+| 3    | 网络或上游错                            |
+| 4    | 余额不足 / 配额耗尽                     |
+| 5    | 资源不存在                              |
 
 ## AI Agent 集成
 

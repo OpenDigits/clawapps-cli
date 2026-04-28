@@ -31,6 +31,25 @@ clawapps send "hello"
 clawapps connect
 ```
 
+## Design Philosophy
+
+The CLI gives you **three thin layers**:
+- **System** — auth, diagnostics, local config
+- **Messaging** — talk to your agent
+- **Account** — credits, profile, usage
+
+Everything else (your roles, tasks, apps, knowledge base, memory) lives **inside the agent itself**. Just ask in natural language:
+
+```bash
+clawapps send "list my roles"
+clawapps send "what tasks are running right now?"
+clawapps send "@张老师 weekend plans?"
+clawapps send "show me my deployed apps"
+clawapps send "search my knowledge base for K8s notes"
+```
+
+There are deliberately no `roles`, `tasks`, `apps`, `kb` subcommands — the agent has the full context (memory, relationships, history) and gives a smarter answer than a flat API listing would.
+
 ## Commands
 
 ### `clawapps login --wechat | --whatsapp`
@@ -112,6 +131,80 @@ $ clawapps sessions
 $ clawapps sessions --clear
 ```
 
+## Coming in v0.9 (Preview)
+
+The following commands are part of the v0.9 roadmap. The shape and JSON contracts below are stable — you can wire your agent against them now.
+
+### `clawapps whoami`
+
+Print the current logged-in identity.
+
+```bash
+$ clawapps whoami
+{"user_id":"uuid","display_name":"Jay","membership":"pro","channel":"wechat","expires_at":"2026-04-29T21:21:00.000Z"}
+```
+
+### `clawapps doctor`
+
+Run a self-diagnostic. Useful inside agent harnesses to detect setup issues.
+
+```bash
+$ clawapps doctor
+{"check":"credentials","ok":true}
+{"check":"network","ok":true,"latency_ms":42}
+{"check":"relay_reachable","ok":true}
+{"check":"workspace_ready","ok":true}
+{"summary":"all checks passed"}
+```
+
+### `clawapps stop`
+
+Interrupt the assistant's current reply (sends `{action:"stop"}` to the live session).
+
+```bash
+$ clawapps stop
+{"event":"stopped"}
+```
+
+### `clawapps profile [--update <key=value>]`
+
+Read or update your account profile.
+
+```bash
+$ clawapps profile
+{"display_name":"Jay","preferred_language":"zh","preferences":{"theme":"dark"}}
+
+$ clawapps profile --update display_name=Jacky
+{"event":"updated","display_name":"Jacky"}
+```
+
+### `clawapps usage [--period 7d] [--by mode]`
+
+View credit usage statistics.
+
+```bash
+$ clawapps usage --period 7d
+{"period":"7d","total_credits":42.5,"by_day":[{"date":"2026-04-22","credits":7.1}, ...]}
+
+$ clawapps usage --period 30d --by mode
+{"period":"30d","by_mode":{"chat":120.4,"task":35.7,"role":18.2}}
+```
+
+### `clawapps config <get|set> <key> [value]`
+
+Persistent local configuration in `~/.clawapps/config.json`.
+
+```bash
+$ clawapps config set base_url https://staging-api.clawapps.ai
+$ clawapps config get base_url
+{"key":"base_url","value":"https://staging-api.clawapps.ai"}
+```
+
+## Future
+
+- `clawapps subscribe` — manage your subscription plan (returns payment link, never handles cards)
+- `clawapps add-credit <amount>` — top up credits (returns payment link)
+
 ## Event Stream Reference
 
 JSON events emitted by `send` / `connect` (one per line on stdout):
@@ -157,6 +250,17 @@ Stored at `~/.clawapps/credentials.json` with mode `0600`:
 | `CLAWAPPS_REFRESH_TOKEN`  | —                                | Override credentials file (with access)      |
 
 All endpoints live under `/cli/v1/*` on the same base. There is no separate relay URL.
+
+## Exit Codes
+
+| Code | Meaning                                    |
+|------|--------------------------------------------|
+| 0    | Success                                    |
+| 1    | User error (bad arguments, missing input)  |
+| 2    | Authentication failed or expired           |
+| 3    | Network or upstream error                  |
+| 4    | Insufficient credits / payment required    |
+| 5    | Resource not found                         |
 
 ## AI Assistant Integration
 
