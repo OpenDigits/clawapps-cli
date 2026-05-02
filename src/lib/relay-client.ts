@@ -1,0 +1,364 @@
+import WebSocket from 'ws';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
+import { CONFIG } from './config.js';
+import { getBase } from './base-url.js';
+import type {
+  RelayBalanceResponse,
+  SessionInfo,
+  SessionStore,
+  MeResponse,
+  Preferences,
+  DownloadUrlResponse,
+} from './types.js';
+
+function cliHttpUrl(path: string): string {
+  return `${getBase()}/cli/v1${path}`;
+}
+
+function cliWsUrl(token: string): string {
+  const wsBase = getBase().replace(/^https/, 'wss').replace(/^http/, 'ws');
+  return `${wsBase}/cli/v1/ws?token=${encodeURIComponent(token)}`;
+}
+
+// --- WebSocket relay connection ---
+
+export interface RelayMessage {
+  type: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Connect to Relay via WebSocket.
+ */
+export async function connectRelay(token: string): Promise<RelayConnection> {
+  const wsUrl = cliWsUrl(token);
+
+  const ws = await new Promise<WebSocket>((resolve, reject) => {
+    const socket = new WebSocket(wsUrl);
+    const timeout = setTimeout(() => {
+      socket.terminate();
+      reject(new Error('Connection timeout'));
+    }, CONFIG.CLI_CONNECT_TIMEOUT_MS);
+
+    socket.on('open', () => { clearTimeout(timeout); resolve(socket); });
+    socket.on('error', (err) => { clearTimeout(timeout); reject(new Error(`Connection failed: ${err.message}`)); });
+  });
+
+  const connMsg = await waitForMessage(ws, 'connected', CONFIG.CLI_CONNECT_TIMEOUT_MS);
+
+  return new RelayConnection(ws, connMsg.session_id as string, connMsg.mode as string);
+}
+
+function waitForMessage(ws: WebSocket, expectedType: string, timeoutMs: number): Promise<RelayMessage> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      ws.removeListener('message', handler);
+      reject(new Error(`Timeout waiting for "${expectedType}"`));
+    }, timeoutMs);
+
+    function handler(data: WebSocket.RawData) {
+      try {
+        const msg = JSON.parse(data.toString());
+        if (msg.type === expectedType) {
+          clearTimeout(timeout);
+          ws.removeListener('message', handler);
+          resolve(msg);
+        }
+      } catch { /* keep waiting */ }
+    }
+
+    ws.on('message', handler);
+  });
+}
+
+export class RelayConnection {
+  ws: WebSocket;
+  sessionId: string;
+  mode: string;
+
+  constructor(ws: WebSocket, sessionId: string, mode: string) {
+    this.ws = ws;
+    this.sessionId = sessionId;
+    this.mode = mode;
+  }
+
+  send(action: Record<string, unknown>) {
+    if (this.ws.readyState !== WebSocket.OPEN) return;
+    this.ws.send(JSON.stringify(action));
+  }
+
+  async *sendMessage(content: string): AsyncGenerator<RelayMessage> {
+    this.send({ action: 'message', content });
+
+    const queue: RelayMessage[] = [];
+    let resolve: (() => void) | null = null;
+    let done = false;
+
+    const handler = (data: WebSocket.RawData) => {
+      try {
+        const msg = JSON.parse(data.toString()) as RelayMessage;
+        queue.push(msg);
+        if (resolve) { resolve(); resolve = null; }
+      } catch { /* ignore */ }
+    };
+
+    this.ws.on('message', handler);
+
+    try {
+      while (!done) {
+        if (queue.length === 0) {
+          await new Promise<void>((r) => { resolve = r; });
+        }
+        while (queue.length > 0) {
+          const msg = queue.shift()!;
+          yield msg;
+          if (msg.type === 'complete' || msg.type === 'error') {
+            done = true;
+            break;
+          }
+        }
+      }
+    } finally {
+      this.ws.removeListener('message', handler);
+    }
+  }
+
+  async *listen(): AsyncGenerator<RelayMessage> {
+    const queue: RelayMessage[] = [];
+    let resolve: (() => void) | null = null;
+    let closed = false;
+
+    const handler = (data: WebSocket.RawData) => {
+      try {
+        const msg = JSON.parse(data.toString()) as RelayMessage;
+        queue.push(msg);
+        if (resolve) { resolve(); resolve = null; }
+      } catch { /* ignore */ }
+    };
+
+    const closeHandler = () => {
+      closed = true;
+      if (resolve) { resolve(); resolve = null; }
+    };
+
+    this.ws.on('message', handler);
+    this.ws.on('close', closeHandler);
+
+    try {
+      while (!closed) {
+        if (queue.length === 0) {
+          await new Promise<void>((r) => { resolve = r; });
+        }
+        while (queue.length > 0) {
+          yield queue.shift()!;
+        }
+      }
+    } finally {
+      this.ws.removeListener('message', handler);
+      this.ws.removeListener('close', closeHandler);
+    }
+  }
+
+  stop() {
+    this.send({ action: 'stop' });
+  }
+
+  close() {
+    if (this.ws.readyState === WebSocket.OPEN) {
+      this.ws.close(1000, 'Client close');
+    }
+  }
+}
+
+// --- HTTP endpoints ---
+
+async function relayJsonError(res: Response): Promise<Error> {
+  const body = await res.json().catch(() => ({ message: res.statusText })) as Record<string, string>;
+  return new Error(body.message || body.code || `Request failed (${res.status})`);
+}
+
+export async function getBalance(token: string): Promise<RelayBalanceResponse> {
+  const res = await fetch(cliHttpUrl('/balance'), {
+    method: 'GET',
+    headers: { 'Authorization': `Bearer ${token}` },
+  });
+  if (!res.ok) throw await relayJsonError(res);
+  return await res.json() as RelayBalanceResponse;
+}
+
+export async function getMe(token: string): Promise<MeResponse> {
+  const res = await fetch(cliHttpUrl('/me'), {
+    method: 'GET',
+    headers: { 'Authorization': `Bearer ${token}` },
+  });
+  if (!res.ok) throw await relayJsonError(res);
+  return await res.json() as MeResponse;
+}
+
+export async function setPreferences(token: string, prefs: Partial<Preferences>): Promise<Preferences> {
+  const res = await fetch(cliHttpUrl('/preferences'), {
+    method: 'PUT',
+    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(prefs),
+  });
+  if (res.status === 503) {
+    throw new Error('PREFERENCES_UNSUPPORTED: backend preferences endpoint not yet available');
+  }
+  if (!res.ok) throw await relayJsonError(res);
+  return await res.json() as Preferences;
+}
+
+export async function getDownloadUrl(token: string, fileId: string): Promise<DownloadUrlResponse> {
+  const res = await fetch(cliHttpUrl(`/files/${encodeURIComponent(fileId)}/download-url`), {
+    method: 'GET',
+    headers: { 'Authorization': `Bearer ${token}` },
+  });
+  if (!res.ok) throw await relayJsonError(res);
+  return await res.json() as DownloadUrlResponse;
+}
+
+// --- Local session persistence ---
+
+function sessionsPath(): string {
+  return join(homedir(), CONFIG.CREDENTIALS_DIR, CONFIG.SESSIONS_FILE);
+}
+
+export async function loadSessions(): Promise<SessionStore> {
+  try {
+    const data = await readFile(sessionsPath(), 'utf-8');
+    return JSON.parse(data) as SessionStore;
+  } catch {
+    return { sessions: {} };
+  }
+}
+
+export async function saveSession(info: SessionInfo): Promise<void> {
+  const store = await loadSessions();
+  store.sessions[info.session_id] = info;
+  store.last_session_id = info.session_id;
+  const dir = join(homedir(), CONFIG.CREDENTIALS_DIR);
+  await mkdir(dir, { recursive: true });
+  await writeFile(sessionsPath(), JSON.stringify(store, null, 2), 'utf-8');
+}
+
+export async function clearSessions(): Promise<void> {
+  const dir = join(homedir(), CONFIG.CREDENTIALS_DIR);
+  await mkdir(dir, { recursive: true });
+  await writeFile(sessionsPath(), JSON.stringify({ sessions: {} }, null, 2), 'utf-8');
+}
+
+export async function getLastSessionId(): Promise<string | null> {
+  const store = await loadSessions();
+  return store.last_session_id || null;
+}
+
+// --- Block 1 listings (Relay proxies to backend) ---
+
+async function relayGet<T>(token: string, path: string, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
+  const qs = params ? '?' + new URLSearchParams(
+    Object.entries(params)
+      .filter(([, v]) => v !== undefined && v !== '')
+      .map(([k, v]) => [k, String(v)])
+  ).toString() : '';
+  const headers: Record<string, string> = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const res = await fetch(cliHttpUrl(path) + qs, { method: 'GET', headers });
+  if (!res.ok) throw await relayJsonError(res);
+  return await res.json() as T;
+}
+
+async function relayDelete(token: string, path: string): Promise<void> {
+  const res = await fetch(cliHttpUrl(path), {
+    method: 'DELETE',
+    headers: { 'Authorization': `Bearer ${token}` },
+  });
+  if (!res.ok && res.status !== 204) throw await relayJsonError(res);
+}
+
+export interface FilesListParams {
+  q?: string;
+  installed?: boolean;
+  page?: number;
+  page_size?: number;
+  session_id?: string;
+  task_id?: string;
+  content_type?: string;
+}
+
+export async function listFiles(token: string, params: FilesListParams = {}): Promise<unknown> {
+  return relayGet(token, '/files', params as Record<string, unknown> as Record<string, string | number | boolean | undefined>);
+}
+
+export async function deleteFile(token: string, fileId: string): Promise<void> {
+  await relayDelete(token, `/files/${encodeURIComponent(fileId)}`);
+}
+
+export async function getStorage(token: string): Promise<unknown> {
+  return relayGet(token, '/storage');
+}
+
+export async function listRoles(token: string): Promise<unknown> {
+  return relayGet(token, '/roles');
+}
+
+export async function listSchedules(token: string): Promise<unknown> {
+  return relayGet(token, '/schedules');
+}
+
+export interface TasksListParams {
+  status?: string;
+  action?: string;
+  parent_id?: string;
+  has_parent?: boolean;
+  include_children?: boolean;
+  tree?: boolean;
+  date_from?: string;
+  date_to?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export async function listTasks(token: string, params: TasksListParams = {}): Promise<unknown> {
+  return relayGet(token, '/tasks', params as Record<string, unknown> as Record<string, string | number | boolean | undefined>);
+}
+
+// --- Activity / Broadcast (Relay proxies under /cli/v1/activities*) ---
+
+import type { ActivityEnvelope, ActivityListResponse } from './types.js';
+
+export interface ActivitiesQuery {
+  cursor?: string;
+  limit?: number;
+  action?: string;
+  actor_role_id?: string;
+  target_type?: string;
+  q?: string;
+  visibility?: 'public' | 'private';
+}
+
+export async function listActivities(token: string | null, q: ActivitiesQuery = {}): Promise<ActivityListResponse> {
+  const params: Record<string, string | number | boolean | undefined> = q as unknown as Record<string, string | number | boolean | undefined>;
+  return relayGet<ActivityListResponse>(token || '', '/activities', params);
+}
+
+export async function getActivity(token: string, id: string): Promise<ActivityEnvelope> {
+  return relayGet<ActivityEnvelope>(token, `/activities/${encodeURIComponent(id)}`);
+}
+
+export async function listActivitiesByRole(token: string, roleId: string, q: ActivitiesQuery = {}): Promise<ActivityListResponse> {
+  return relayGet<ActivityListResponse>(token, `/activities/by-role/${encodeURIComponent(roleId)}`, q as unknown as Record<string, string | number | boolean | undefined>);
+}
+
+export async function recentActivities(token: string | null): Promise<ActivityListResponse> {
+  // /recent is anonymous-friendly; pass through Authorization if we have one
+  // (gives higher rate-limit budget). relayGet always sends bearer; for
+  // truly anonymous calls use plain fetch.
+  if (!token) {
+    const res = await fetch(cliHttpUrl('/activities/recent'));
+    if (!res.ok) throw await relayJsonError(res);
+    return await res.json() as ActivityListResponse;
+  }
+  return relayGet<ActivityListResponse>(token, '/activities/recent');
+}

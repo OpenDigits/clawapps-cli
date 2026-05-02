@@ -1,0 +1,38 @@
+{
+  "name": "@clawapps/cli",
+  "version": "1.0.0",
+  "description": "ClawApps CLI - AI agent platform client",
+  "type": "module",
+  "bin": {
+    "clawapps": "./bin/claw.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node bin/claw.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "bin/",
+    "dist/"
+  ],
+  "keywords": [
+    "clawapps",
+    "cli",
+    "ai",
+    "marketplace"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "chalk": "^5.6.2",
+    "commander": "^14.0.3",
+    "ws": "^8.20.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.0",
+    "@types/ws": "^8.18.1",
+    "typescript": "^5.9.3"
+  }
+}
