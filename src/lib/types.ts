@@ -31,7 +31,11 @@ export interface RelayBalanceResponse {
 export interface Preferences {
   preferred_claude_model: string | null;
   preferred_codex_model: string | null;
-  preferred_language: string | null;
+  // Backend (commit 23ef031) renamed preferred_language → language and added
+  // timezone + city. We accept all five as optional partial-PATCH inputs.
+  language?: string | null;
+  timezone?: string | null;
+  city?: string | null;
 }
 
 export interface MeResponse {

@@ -44,10 +44,15 @@ export async function modelSet(pairs: string[]) {
     const [k, ...rest] = pair.split('=');
     const v = rest.join('=');
     if (!k || !v) continue;
-    if (k === 'claude') update.preferred_claude_model = v;
-    else if (k === 'codex') update.preferred_codex_model = v;
-    else if (k === 'lang' || k === 'language') update.preferred_language = v;
-    else {
+    // Backend whitelists the canonical id (claude-<...>, gpt-5.4...) — accept
+    // bare shortname for UX (e.g. `claude=sonnet-4-6`) and prefix when needed.
+    if (k === 'claude') {
+      update.preferred_claude_model = v.startsWith('claude-') ? v : `claude-${v}`;
+    } else if (k === 'codex') {
+      update.preferred_codex_model = v.startsWith('gpt-') ? v : `gpt-${v}`;
+    } else if (k === 'lang' || k === 'language') {
+      update.language = v;
+    } else {
       jsonOut({ error: `unknown key: ${k}` });
       process.exit(1);
     }

@@ -117,7 +117,7 @@ export async function activityWatch(opts: WatchOpts) {
     try { msg = JSON.parse(data.toString()); } catch { return; }
 
     if (msg.type === 'subscribed') {
-      jsonOut({ event: 'subscribed', channel: msg.channel });
+      jsonOut({ event: 'subscribed', ...msg });
       return;
     }
 
