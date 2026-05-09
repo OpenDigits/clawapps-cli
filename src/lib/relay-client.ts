@@ -1,5 +1,5 @@
 import WebSocket from 'ws';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, chmod } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { CONFIG } from './config.js';
@@ -35,20 +35,25 @@ export interface RelayMessage {
 export async function connectRelay(token: string): Promise<RelayConnection> {
   const wsUrl = cliWsUrl(token);
 
-  const ws = await new Promise<WebSocket>((resolve, reject) => {
-    const socket = new WebSocket(wsUrl);
+  // Race fix (ISS-02, 2026-05-09): the relay sends `{type:"connected"}`
+  // immediately on connection, often before our 'open' handler resolves
+  // (especially on the reuse fast-path). Attach the message listener BEFORE
+  // awaiting 'open' so we never lose the first frame.
+  const socket = new WebSocket(wsUrl);
+  const connectedPromise = waitForMessage(socket, 'connected', CONFIG.CLI_CONNECT_TIMEOUT_MS);
+
+  await new Promise<void>((resolve, reject) => {
     const timeout = setTimeout(() => {
       socket.terminate();
       reject(new Error('Connection timeout'));
     }, CONFIG.CLI_CONNECT_TIMEOUT_MS);
 
-    socket.on('open', () => { clearTimeout(timeout); resolve(socket); });
+    socket.on('open', () => { clearTimeout(timeout); resolve(); });
     socket.on('error', (err) => { clearTimeout(timeout); reject(new Error(`Connection failed: ${err.message}`)); });
   });
 
-  const connMsg = await waitForMessage(ws, 'connected', CONFIG.CLI_CONNECT_TIMEOUT_MS);
-
-  return new RelayConnection(ws, connMsg.session_id as string, connMsg.mode as string);
+  const connMsg = await connectedPromise;
+  return new RelayConnection(socket, connMsg.session_id as string, connMsg.mode as string);
 }
 
 function waitForMessage(ws: WebSocket, expectedType: string, timeoutMs: number): Promise<RelayMessage> {
@@ -240,13 +245,18 @@ export async function saveSession(info: SessionInfo): Promise<void> {
   store.last_session_id = info.session_id;
   const dir = join(homedir(), CONFIG.CREDENTIALS_DIR);
   await mkdir(dir, { recursive: true });
-  await writeFile(sessionsPath(), JSON.stringify(store, null, 2), 'utf-8');
+  const path = sessionsPath();
+  await writeFile(path, JSON.stringify(store, null, 2), 'utf-8');
+  // ISS-05: keep mode 0600 for consistency with credentials.json
+  await chmod(path, 0o600);
 }
 
 export async function clearSessions(): Promise<void> {
   const dir = join(homedir(), CONFIG.CREDENTIALS_DIR);
   await mkdir(dir, { recursive: true });
-  await writeFile(sessionsPath(), JSON.stringify({ sessions: {} }, null, 2), 'utf-8');
+  const path = sessionsPath();
+  await writeFile(path, JSON.stringify({ sessions: {} }, null, 2), 'utf-8');
+  await chmod(path, 0o600);
 }
 
 export async function getLastSessionId(): Promise<string | null> {

@@ -32,9 +32,25 @@ export async function connectCommand(_options: ConnectOptions) {
 
     const rl = createInterface({ input: process.stdin });
 
+    // Track in-flight messages so stdin EOF can wait for their replies
+    // (ISS-07). Each `message` action increments; each `complete`/`error`
+    // event from the relay decrements.
+    let pending = 0;
+    type Resolver = () => void;
+    let drainResolve: Resolver | null = null;
+
     void (async () => {
       for await (const msg of relay.listen()) {
         jsonOut({ event: msg.type, ...msg });
+        if (msg.type === 'complete' || msg.type === 'error') {
+          if (pending > 0) pending -= 1;
+          if (pending === 0) {
+            // Use a typed temp + cast to dodge inner-closure narrowing loss.
+            const r = drainResolve as Resolver | null;
+            drainResolve = null;
+            if (r !== null) (r as Resolver)();
+          }
+        }
       }
     })();
 
@@ -53,11 +69,22 @@ export async function connectCommand(_options: ConnectOptions) {
         relay.stop();
         jsonOut({ event: 'stopped' });
       } else if (cmd.action === 'message' && cmd.content) {
+        pending += 1;
         relay.send({ action: 'message', content: cmd.content });
       } else {
         jsonOut({ event: 'error', code: 'UNKNOWN_ACTION', message: `Unknown action: ${cmd.action}` });
       }
     }
+
+    // ISS-06 + ISS-07 fix: stdin EOF → wait for any pending message to
+    // complete (≤ 120s grace), then close.
+    if (pending > 0) {
+      await Promise.race([
+        new Promise<void>((resolve) => { drainResolve = resolve as Resolver; }),
+        new Promise<void>((resolve) => setTimeout(resolve, 120_000)),
+      ]);
+    }
+    cleanup();
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     jsonOut({ event: 'error', code: 'CLI_ERROR', message: msg });

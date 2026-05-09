@@ -19,6 +19,8 @@ export async function sendCommand(message: string, _options: SendOptions) {
     await saveSession({ session_id: relay.sessionId, created_at: new Date().toISOString() });
     jsonOut({ event: 'session_created', session_id: relay.sessionId });
 
+    let serverError: { code?: string; message?: string } | null = null;
+
     for await (const msg of relay.sendMessage(message)) {
       switch (msg.type) {
         case 'assistant_text':
@@ -55,11 +57,28 @@ export async function sendCommand(message: string, _options: SendOptions) {
 
         case 'error':
           jsonOut({ event: 'error', code: msg.code, message: msg.message });
+          // Remember the first error so we can exit non-zero after the loop.
+          // (Fix ISS-04: a one-shot send that ended in a server error must
+          // not exit 0 — script callers need a signal.)
+          if (!serverError) {
+            serverError = {
+              code: typeof msg.code === 'string' ? msg.code : undefined,
+              message: typeof msg.message === 'string' ? msg.message : undefined,
+            };
+          }
           break;
       }
     }
 
     relay.close();
+
+    if (serverError) {
+      // 4 = INSUFFICIENT_CREDITS, 2 = AUTH, 1 = generic
+      const code = serverError.code || '';
+      if (code === 'INSUFFICIENT_CREDITS') process.exit(4);
+      if (code === 'AUTH_EXPIRED' || code === 'AUTH_REQUIRED') process.exit(2);
+      process.exit(1);
+    }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     jsonOut({ event: 'error', code: 'CLI_ERROR', message: msg });
