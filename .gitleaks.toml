@@ -1,0 +1,54 @@
+# gitleaks rules tailored for the open-source @clawapps/cli repo.
+#
+# Hard rule: this is a public npm package. Any commit must be safe to
+# `npm publish`. We extend the upstream defaults and add stricter rules
+# specifically because anyone in the world can pull this source.
+#
+# Run locally:
+#   gitleaks detect --config .gitleaks.toml --no-git
+# Run on staged diff:
+#   gitleaks protect --config .gitleaks.toml --staged
+
+title = "clawapps-cli secret scan rules"
+
+[extend]
+useDefault = true
+
+# ---------------------------------------------------------------------------
+# Custom rules
+# ---------------------------------------------------------------------------
+
+[[rules]]
+id = "no-cluster-secret"
+description = "CLUSTER_SECRET / shared backend secret has no place in an open-source CLI"
+regex = '''(?i)(cluster[_-]?secret|jwt[_-]?secret|api[_-]?key|admin[_-]?token)\s*[:=]\s*['"][a-zA-Z0-9_\-]{16,}['"]'''
+tags = ["server-secret", "open-source-blocker"]
+
+[[rules]]
+id = "no-hardcoded-jwt"
+description = "Hard-coded JWT in source (a public npm package must never ship an issued token)"
+regex = '''eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}'''
+path = '''\.(ts|js|json|yaml|yml|env)$'''
+tags = ["jwt", "high-severity"]
+
+[[rules]]
+id = "no-credentials-fixture"
+description = "QA fixture credentials file (must live as gitignored on disk, never in source tree)"
+path = '''(^|/)qa-[a-z0-9_-]*-credentials\.json$'''
+tags = ["qa", "credentials"]
+
+# ---------------------------------------------------------------------------
+# Allowlists
+# ---------------------------------------------------------------------------
+
+[allowlist]
+description = "Known-safe paths and patterns"
+paths = [
+  '''^node_modules/''',
+  '''^\.git/''',
+  '''^dist/''',                   # build artifact; never contains source secrets
+  '''^README\.md$''',              # may have CLI usage examples, not real secrets
+]
+regexes = [
+  '''eyJhbGc\.\.\.'''               # documented short example tokens
+]

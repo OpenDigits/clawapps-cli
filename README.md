@@ -275,6 +275,19 @@ If `doctor` is green and you still see issues, file an issue at the [GitHub repo
 
 ---
 
+## Contributor setup
+
+This is an open-source npm package — every commit must be safe to publish. After cloning, install the secret-scanning pre-commit hook (one-time):
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+This wires up [`gitleaks`](https://github.com/gitleaks/gitleaks) plus a local rule that refuses to stage any hard-coded JWT or `qa-*-credentials.json` file. The same scan runs cloud-side on every PR — see `.github/workflows/secret-scan.yml`.
+
+---
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

@@ -1,0 +1,36 @@
+# Local enforcement that mirrors the cloud-side gitleaks workflow.
+# After cloning the repo:
+#   pip install pre-commit
+#   pre-commit install
+# Every `git commit` will then run these checks first.
+
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+        args: [--config=.gitleaks.toml]
+
+  - repo: local
+    hooks:
+      - id: block-credentials-files
+        name: Block qa-*-credentials.json files from being staged
+        # Belt-and-suspenders rule on top of gitleaks. Refuses to commit
+        # any file whose name matches the QA fixture pattern, regardless
+        # of contents. Catches `git add -A` accidents pre-leak.
+        entry: |
+          bash -c '
+            blocked=$(git diff --cached --name-only --diff-filter=ACMR \
+              | grep -E "(^|/)qa-[a-z0-9_-]*-credentials\.json$" || true)
+            if [ -n "$blocked" ]; then
+              echo "✗ Refusing to commit credentials fixture file(s):"
+              echo "$blocked" | sed "s/^/    /"
+              echo
+              echo "  These belong only on disk (mode 0600), never in git."
+              echo "  See .gitignore + qa/REQUEST-TO-BACKEND-7-user-token-restart-bridge.md"
+              exit 1
+            fi
+          '
+        language: system
+        pass_filenames: false
+        always_run: true
