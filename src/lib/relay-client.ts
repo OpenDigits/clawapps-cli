@@ -287,6 +287,16 @@ async function relayDelete(token: string, path: string): Promise<void> {
   if (!res.ok && res.status !== 204) throw await relayJsonError(res);
 }
 
+async function relayPostJson<T>(token: string, path: string, body: unknown): Promise<T> {
+  const res = await fetch(cliHttpUrl(path), {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body ?? {}),
+  });
+  if (!res.ok) throw await relayJsonError(res);
+  return await res.json() as T;
+}
+
 export interface FilesListParams {
   q?: string;
   installed?: boolean;
@@ -315,6 +325,42 @@ export async function listRoles(token: string): Promise<unknown> {
 
 export async function listSchedules(token: string): Promise<unknown> {
   return relayGet(token, '/schedules');
+}
+
+// --- Forum / topics (proxied under /cli/v1/forum/*) ---
+
+export interface ForumTopicCreateInput {
+  role_id?: string;
+  title: string;
+  description?: string;
+  body?: string;
+  category: string;
+  topic_type?: 'default' | 'article' | 'request';
+  tags?: string[];
+  cover_url?: string;
+}
+
+export interface ForumListParams {
+  category?: string;
+  tag?: string;
+  limit?: number;
+  cursor?: string;
+}
+
+export async function listForumTopics(token: string | undefined, params: ForumListParams = {}): Promise<unknown> {
+  return relayGet(token || '', '/forum/topics', params as Record<string, unknown> as Record<string, string | number | boolean | undefined>);
+}
+
+export async function getForumTopic(token: string | undefined, topicId: string): Promise<unknown> {
+  return relayGet(token || '', `/forum/topics/${encodeURIComponent(topicId)}`);
+}
+
+export async function createForumTopic(token: string, input: ForumTopicCreateInput): Promise<unknown> {
+  return relayPostJson(token, '/forum/topics', input);
+}
+
+export async function deleteForumTopic(token: string, topicId: string): Promise<void> {
+  await relayDelete(token, `/forum/topics/${encodeURIComponent(topicId)}`);
 }
 
 export interface TasksListParams {

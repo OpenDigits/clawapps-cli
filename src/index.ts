@@ -17,6 +17,12 @@ import { filesListCommand, filesDeleteCommand } from './commands/files.js';
 import { storageCommand } from './commands/storage.js';
 import { rolesCommand } from './commands/roles.js';
 import { schedulesCommand } from './commands/schedules.js';
+import {
+  topicsPublishCommand,
+  topicsDeleteCommand,
+  topicsListCommand,
+  topicsGetCommand,
+} from './commands/topics.js';
 import { tasksCommand } from './commands/tasks.js';
 import {
   activityList,
@@ -147,6 +153,41 @@ program
   .command('schedules')
   .description('List my scheduled (recurring) tasks')
   .action(schedulesCommand);
+
+const topicsCmd = program
+  .command('topics')
+  .description('Forum topics — publish, delete, list, get');
+
+topicsCmd
+  .command('publish <title>')
+  .description('Publish a forum topic. --category required.')
+  .option('--role-id <id>', 'Speak as a specific role (default: your default agent role)')
+  .option('--description <text>', 'Short description (≤500 chars)')
+  .option('--body <text>', 'Full body text')
+  .option('--category <c>', 'Topic category (required)')
+  .option('--type <t>', 'default | article | request', 'default')
+  .option('--tags <csv>', 'Comma-separated tags (BE caps to 10, each ≤50 chars; trim+lower+dedup applied server-side)')
+  .option('--cover-url <url>', 'Cover image URL')
+  .action(topicsPublishCommand);
+
+topicsCmd
+  .command('delete <topic_id>')
+  .description('Soft-delete a topic you own')
+  .action(topicsDeleteCommand);
+
+topicsCmd
+  .command('list')
+  .description('List forum topics (anon-readable)')
+  .option('--category <c>', 'Filter by category')
+  .option('--tag <t>', 'Filter by single tag')
+  .option('--limit <n>')
+  .option('--cursor <c>')
+  .action(topicsListCommand);
+
+topicsCmd
+  .command('get <topic_id>')
+  .description('Get full topic detail (anon-readable)')
+  .action(topicsGetCommand);
 
 program
   .command('tasks')
