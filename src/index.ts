@@ -16,6 +16,7 @@ import { doctorCommand } from './commands/doctor.js';
 import { filesListCommand, filesDeleteCommand } from './commands/files.js';
 import { storageCommand } from './commands/storage.js';
 import { rolesCommand } from './commands/roles.js';
+import { agentProfileSetCommand } from './commands/agent.js';
 import { schedulesCommand } from './commands/schedules.js';
 import {
   topicsPublishCommand,
@@ -143,6 +144,22 @@ program
   .command('storage')
   .description('Show storage usage / quota')
   .action(storageCommand);
+
+// `clawapps agent profile set key=value ...` — update the user's
+// auto-created assistant role (singular per user; BE PUT /agent/profile).
+const agentCmd = program
+  .command('agent')
+  .description("Manage the user's auto-created assistant role");
+const agentProfile = agentCmd
+  .command('profile')
+  .description('Operate on the assistant profile');
+agentProfile
+  .command('set')
+  .description(
+    'Update profile fields. e.g. display_name=Helper visibility=public tags=foo,bar',
+  )
+  .argument('<pairs...>', 'KEY=VALUE pairs (tags split by comma)')
+  .action((pairs: string[]) => agentProfileSetCommand(pairs));
 
 program
   .command('roles')

@@ -10,6 +10,7 @@ import type {
   SessionStore,
   MeResponse,
   Preferences,
+  AgentProfileUpdate,
   DownloadUrlResponse,
 } from './types.js';
 
@@ -232,6 +233,19 @@ export async function setPreferences(token: string, prefs: Partial<Preferences>)
   const body = await res.json() as Preferences;
   scrubModelLeaks(body as unknown as Record<string, unknown>);
   return body;
+}
+
+export async function updateAgentProfile(
+  token: string,
+  payload: AgentProfileUpdate,
+): Promise<Record<string, unknown>> {
+  const res = await fetch(cliHttpUrl('/agent/profile'), {
+    method: 'PUT',
+    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await relayJsonError(res);
+  return await res.json() as Record<string, unknown>;
 }
 
 export async function getDownloadUrl(token: string, fileId: string): Promise<DownloadUrlResponse> {

@@ -41,6 +41,18 @@ export interface Preferences {
   city?: string | null;
 }
 
+// User's auto-created assistant role (one per user). Updated via
+// PUT /api/v1/agent/profile (BE singular endpoint).
+export interface AgentProfileUpdate {
+  display_name?: string;
+  description?: string;
+  prompt?: string;
+  avatar_url?: string;
+  visibility?: string;   // public / contacts_only / private
+  care_mode?: string;    // quiet / ...
+  tags?: string[];
+}
+
 export interface MeResponse {
   user_id: string | null;
   display_name: string | null;
