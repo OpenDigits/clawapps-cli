@@ -2,15 +2,13 @@ import { resolveCredentials } from './helpers/resolve-credentials.js';
 import { getMe, setPreferences } from '../lib/relay-client.js';
 import type { Preferences } from '../lib/types.js';
 
-const SUPPORTED_CLAUDE = ['claude-opus-4-7', 'claude-sonnet-4-6', 'claude-haiku-4-5'];
-const SUPPORTED_CODEX = ['codex-default'];
+// R-21-a: client must not surface model identity. `model list` therefore
+// returns nothing about which models exist; routing decisions live entirely
+// on the backend. Until BE exposes an opaque tier interface (R-21-c) the
+// command stays as a no-op notice.
 
 function jsonOut(obj: Record<string, unknown>) {
   process.stdout.write(JSON.stringify(obj) + '\n');
-}
-
-interface ModelOptions {
-  // commander passes the leftover args via .args; we re-read from process
 }
 
 export async function modelGet() {
@@ -26,16 +24,20 @@ export async function modelGet() {
 }
 
 export async function modelList() {
-  jsonOut({ claude: SUPPORTED_CLAUDE, codex: SUPPORTED_CODEX });
+  jsonOut({
+    info: 'model selection is managed server-side and not exposed to clients',
+    configurable: ['tier', 'language', 'timezone', 'city'],
+    tiers: ['fast', 'balanced', 'smart'],
+  });
 }
 
 /**
- * Accepts positional KEY=VALUE pairs:
- *   clawapps model set claude=sonnet-4-6 codex=default lang=zh-CN
+ * Accepts positional KEY=VALUE pairs. Model identity keys are rejected.
+ *   clawapps model set lang=zh-CN timezone=Asia/Shanghai city=Shanghai
  */
 export async function modelSet(pairs: string[]) {
   if (!pairs || pairs.length === 0) {
-    jsonOut({ error: 'usage: clawapps model set claude=<id> [codex=<id>] [lang=<code>]' });
+    jsonOut({ error: 'usage: clawapps model set lang=<code> [timezone=<tz>] [city=<name>]' });
     process.exit(1);
   }
 
@@ -44,14 +46,22 @@ export async function modelSet(pairs: string[]) {
     const [k, ...rest] = pair.split('=');
     const v = rest.join('=');
     if (!k || !v) continue;
-    // Backend whitelists the canonical id (claude-<...>, gpt-5.4...) — accept
-    // bare shortname for UX (e.g. `claude=sonnet-4-6`) and prefix when needed.
-    if (k === 'claude') {
-      update.preferred_claude_model = v.startsWith('claude-') ? v : `claude-${v}`;
-    } else if (k === 'codex') {
-      update.preferred_codex_model = v.startsWith('gpt-') ? v : `gpt-${v}`;
+    if (k === 'claude' || k === 'codex' || k === 'model') {
+      jsonOut({ error: `key '${k}' is not configurable: model selection is server-side only` });
+      process.exit(1);
+    } else if (k === 'tier') {
+      const TIERS = ['fast', 'balanced', 'smart'];
+      if (!TIERS.includes(v)) {
+        jsonOut({ error: `tier must be one of: ${TIERS.join(', ')}` });
+        process.exit(1);
+      }
+      update.preferred_tier = v;
     } else if (k === 'lang' || k === 'language') {
       update.language = v;
+    } else if (k === 'timezone' || k === 'tz') {
+      update.timezone = v;
+    } else if (k === 'city') {
+      update.city = v;
     } else {
       jsonOut({ error: `unknown key: ${k}` });
       process.exit(1);
@@ -70,7 +80,6 @@ export async function modelSet(pairs: string[]) {
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     jsonOut({ error: msg });
-    // 503 PREFERENCES_UNSUPPORTED → exit 4 so scripts can detect "backend not ready"
     process.exit(msg.includes('PREFERENCES_UNSUPPORTED') ? 4 : 1);
   }
 }

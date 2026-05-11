@@ -193,13 +193,30 @@ export async function getBalance(token: string): Promise<RelayBalanceResponse> {
   return await res.json() as RelayBalanceResponse;
 }
 
+// R-21-a: BE 当前仍在 preferences 里回送 preferred_claude_model /
+// preferred_codex_model。客户端禁止持有/显示模型族信息，所以在反序列化时
+// 主动剥这两个字段（包括 null 值的键名本身）。BE schema 改成不透明 tier
+// 之后（R-21-c），此 helper 可移除。
+function scrubModelLeaks(payload: Record<string, unknown> | null | undefined): void {
+  if (!payload || typeof payload !== 'object') return;
+  const prefs = (payload as { preferences?: Record<string, unknown> }).preferences;
+  if (prefs && typeof prefs === 'object') {
+    delete prefs.preferred_claude_model;
+    delete prefs.preferred_codex_model;
+  }
+  if ('preferred_claude_model' in payload) delete (payload as Record<string, unknown>).preferred_claude_model;
+  if ('preferred_codex_model' in payload) delete (payload as Record<string, unknown>).preferred_codex_model;
+}
+
 export async function getMe(token: string): Promise<MeResponse> {
   const res = await fetch(cliHttpUrl('/me'), {
     method: 'GET',
     headers: { 'Authorization': `Bearer ${token}` },
   });
   if (!res.ok) throw await relayJsonError(res);
-  return await res.json() as MeResponse;
+  const body = await res.json() as MeResponse;
+  scrubModelLeaks(body as unknown as Record<string, unknown>);
+  return body;
 }
 
 export async function setPreferences(token: string, prefs: Partial<Preferences>): Promise<Preferences> {
@@ -212,7 +229,9 @@ export async function setPreferences(token: string, prefs: Partial<Preferences>)
     throw new Error('PREFERENCES_UNSUPPORTED: backend preferences endpoint not yet available');
   }
   if (!res.ok) throw await relayJsonError(res);
-  return await res.json() as Preferences;
+  const body = await res.json() as Preferences;
+  scrubModelLeaks(body as unknown as Record<string, unknown>);
+  return body;
 }
 
 export async function getDownloadUrl(token: string, fileId: string): Promise<DownloadUrlResponse> {

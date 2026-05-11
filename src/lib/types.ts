@@ -28,11 +28,14 @@ export interface RelayBalanceResponse {
   display_name?: string | null;
 }
 
+// R-21-a/c: model identity stays server-side. Clients can read/write only
+// the opaque tier + non-model preferences. `effective_tier` is read-only
+// (BE's fallback when user hasn't set preferred_tier); `preferred_tier` is
+// the user-settable value.
 export interface Preferences {
-  preferred_claude_model: string | null;
-  preferred_codex_model: string | null;
-  // Backend (commit 23ef031) renamed preferred_language → language and added
-  // timezone + city. We accept all five as optional partial-PATCH inputs.
+  preferred_tier?: string | null;
+  effective_tier?: string | null;
+  preferred_language?: string | null;
   language?: string | null;
   timezone?: string | null;
   city?: string | null;
