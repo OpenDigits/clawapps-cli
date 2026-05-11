@@ -43,6 +43,13 @@ export async function sendCommand(message: string, _options: SendOptions) {
           jsonOut({ event: 'mode_change', mode: msg.mode, reason: msg.reason });
           break;
 
+        case 'warning':
+          // R-35: surfaced when /consume returns non-200 (e.g.
+          // CONCURRENT_CHATS_EXCEEDED, INSUFFICIENT_CREDITS). Pass
+          // through code/message/data so callers can render or act.
+          jsonOut({ event: 'warning', code: msg.code, message: msg.message, data: msg.data });
+          break;
+
         case 'complete':
           jsonOut({ event: 'complete', success: msg.success, mode: msg.mode, usage: msg.usage });
           break;
