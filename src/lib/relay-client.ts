@@ -235,6 +235,15 @@ export async function setPreferences(token: string, prefs: Partial<Preferences>)
   return body;
 }
 
+export async function getAgentProfile(token: string): Promise<Record<string, unknown>> {
+  const res = await fetch(cliHttpUrl('/agent/profile'), {
+    method: 'GET',
+    headers: { 'Authorization': `Bearer ${token}` },
+  });
+  if (!res.ok) throw await relayJsonError(res);
+  return await res.json() as Record<string, unknown>;
+}
+
 export async function updateAgentProfile(
   token: string,
   payload: AgentProfileUpdate,

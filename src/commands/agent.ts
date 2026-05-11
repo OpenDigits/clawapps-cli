@@ -1,5 +1,5 @@
 import { resolveCredentials } from './helpers/resolve-credentials.js';
-import { updateAgentProfile } from '../lib/relay-client.js';
+import { getAgentProfile, updateAgentProfile } from '../lib/relay-client.js';
 import type { AgentProfileUpdate } from '../lib/types.js';
 
 function jsonOut(obj: Record<string, unknown>) {
@@ -15,6 +15,25 @@ const ALLOWED_KEYS = new Set([
   'care_mode',
   'tags',
 ]);
+
+/**
+ * `clawapps agent profile show`
+ *
+ * Dedicated read for the user's assistant role. Mirrors PUT shape — same
+ * BE serializer (_agent_out). Reads more fields than filtering `roles`
+ * by category=agent (e.g. care_mode lives only here).
+ */
+export async function agentProfileShowCommand() {
+  try {
+    const creds = await resolveCredentials();
+    const result = await getAgentProfile(creds.access_token);
+    jsonOut(result);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    jsonOut({ error: msg });
+    process.exit(1);
+  }
+}
 
 /**
  * `clawapps agent profile set key=value [key=value ...]`

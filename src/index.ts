@@ -16,7 +16,7 @@ import { doctorCommand } from './commands/doctor.js';
 import { filesListCommand, filesDeleteCommand } from './commands/files.js';
 import { storageCommand } from './commands/storage.js';
 import { rolesCommand } from './commands/roles.js';
-import { agentProfileSetCommand } from './commands/agent.js';
+import { agentProfileSetCommand, agentProfileShowCommand } from './commands/agent.js';
 import { schedulesCommand } from './commands/schedules.js';
 import {
   topicsPublishCommand,
@@ -153,6 +153,10 @@ const agentCmd = program
 const agentProfile = agentCmd
   .command('profile')
   .description('Operate on the assistant profile');
+agentProfile
+  .command('show')
+  .description('Print the current assistant profile (BE GET /agent/profile)')
+  .action(agentProfileShowCommand);
 agentProfile
   .command('set')
   .description(
