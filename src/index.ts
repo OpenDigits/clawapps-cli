@@ -17,6 +17,7 @@ import { filesListCommand, filesDeleteCommand } from './commands/files.js';
 import { storageCommand } from './commands/storage.js';
 import { rolesCommand } from './commands/roles.js';
 import { agentProfileSetCommand, agentProfileShowCommand } from './commands/agent.js';
+import { meProfileSetCommand, meProfileShowCommand } from './commands/me.js';
 import { schedulesCommand } from './commands/schedules.js';
 import {
   topicsPublishCommand,
@@ -144,6 +145,28 @@ program
   .command('storage')
   .description('Show storage usage / quota')
   .action(storageCommand);
+
+// `clawapps me profile show/set` — read/write the OWNER role
+// (the user's main identity). BE cascade per R-31: display_name change
+// also updates users.display_name + every role.owner_display_name +
+// Moky push to Bridge.
+const meCmd = program
+  .command('me')
+  .description("Manage the user's OWNER role (main identity)");
+const meProfile = meCmd
+  .command('profile')
+  .description('Operate on the OWNER role profile');
+meProfile
+  .command('show')
+  .description('Print the OWNER role profile (BE GET /roles/<owner_role_id>)')
+  .action(meProfileShowCommand);
+meProfile
+  .command('set')
+  .description(
+    'Update OWNER role fields. e.g. display_name=Sky avatar_url=https://... description="主账号"',
+  )
+  .argument('<pairs...>', 'KEY=VALUE pairs (keys: display_name, description, avatar_url, visibility)')
+  .action((pairs: string[]) => meProfileSetCommand(pairs));
 
 // `clawapps agent profile set key=value ...` — update the user's
 // auto-created assistant role (singular per user; BE PUT /agent/profile).
