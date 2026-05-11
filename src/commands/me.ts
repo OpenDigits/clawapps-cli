@@ -11,6 +11,7 @@ const ALLOWED_KEYS = new Set([
   'description',
   'avatar_url',
   'visibility',
+  'prompt',
 ]);
 
 async function resolveOwnerRoleId(token: string): Promise<string> {

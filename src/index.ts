@@ -165,7 +165,7 @@ meProfile
   .description(
     'Update OWNER role fields. e.g. display_name=Sky avatar_url=https://... description="主账号"',
   )
-  .argument('<pairs...>', 'KEY=VALUE pairs (keys: display_name, description, avatar_url, visibility)')
+  .argument('<pairs...>', 'KEY=VALUE pairs (keys: display_name, description, avatar_url, visibility, prompt)')
   .action((pairs: string[]) => meProfileSetCommand(pairs));
 
 // `clawapps agent profile set key=value ...` — update the user's
