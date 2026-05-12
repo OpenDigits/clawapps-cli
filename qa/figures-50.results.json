@@ -1,0 +1,319 @@
+[
+  {
+    "name": "黄帝",
+    "role_id": "323074f1-0a43-4267-b969-c6bcd54338fd",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "孔子",
+    "role_id": "be413639-b991-44bf-adec-cc9b9b9496cc",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "老子",
+    "role_id": "973e666e-160d-4533-a418-f20fb92394bc",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "庄子",
+    "role_id": "cc10af7c-d031-4f0d-bcc2-3df519b56053",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "孟子",
+    "role_id": "d2ada829-e3df-4e66-a4cd-40cc1177fa94",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "韩非子",
+    "role_id": "256d8fd7-8e78-4255-86c9-c2ec631e807f",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "墨子",
+    "role_id": "c19fe34b-f89b-4c98-af4e-0a1bb7326afa",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "屈原",
+    "role_id": "d0e8b918-8eb0-4c25-aeb2-0c28b8338987",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "西施",
+    "role_id": "d2a18dc8-2a8f-466f-a841-d40b0b26dc2f",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "范蠡",
+    "role_id": "263f2150-3329-492d-ad4e-7b994ce586fe",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "孙子",
+    "role_id": "e73eecd3-414c-4abe-97fc-6f12043f83a3",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "商鞅",
+    "role_id": "73deee26-31e7-4d9f-a15b-866cfb993c38",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "秦始皇",
+    "role_id": "a90f4992-8cde-4c6f-b279-30849c557c5c",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "项羽",
+    "role_id": "c9b585bd-ff9e-481b-8ae4-43c5bb149b0c",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "刘邦",
+    "role_id": "8469feaf-a43b-4be6-926d-0a320595f88d",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "韩信",
+    "role_id": "f4832998-4643-4300-943c-14ecbbc19ab9",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "张良",
+    "role_id": "5347f1b3-1c39-4b44-9372-68528c8c62a9",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "司马迁",
+    "role_id": "88c7a893-130d-4277-8491-2b00aa7d58ea",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "汉武帝",
+    "role_id": "742d9570-2343-4a21-9519-57618d18174f",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "张仲景",
+    "role_id": "73c5ee42-d70a-451f-ab49-5003d6036c84",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "班超",
+    "role_id": "f1f66721-0b53-4719-ad87-147e6022d4a7",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "华佗",
+    "role_id": "1c2801f8-19a8-4d69-8c67-9a6f8dd89bb3",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "曹操",
+    "role_id": "7d3c14c2-c5ec-4ade-b3ce-8d564e115e78",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "刘备",
+    "role_id": "b77fe0a4-5eb3-409c-a869-4db67761dd85",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "关羽",
+    "role_id": "c63df3a1-3e9c-40db-880f-2a352baa954a",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "张飞",
+    "role_id": "c8426663-c038-4ba5-ac0f-fd813d41dd78",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "诸葛亮",
+    "role_id": "21db8eb5-79b8-4489-823e-aa45b57ed4ba",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "玄奘",
+    "role_id": "3b639cec-7ca6-41da-a81a-7d6da9e65283",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "李白",
+    "role_id": "642de253-9fcd-4bee-b893-faeca94df509",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "杜甫",
+    "role_id": "63817332-cc07-48ef-8092-400d3ca96411",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "武则天",
+    "role_id": "f2635069-2b0e-41b3-bb3f-357481076e8f",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "唐太宗",
+    "role_id": "2a07ec9b-ba3a-4f7d-a0ea-d675b32d675f",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "包拯",
+    "role_id": "79b0c523-3248-4f7f-a14c-9d3e835c48ec",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "苏轼",
+    "role_id": "740fc2dc-97da-4af7-a3e6-af6f37ec6e67",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "王安石",
+    "role_id": "8baec6fe-ac48-42f9-8f89-7f7b5950c939",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "李清照",
+    "role_id": "90b75199-a929-47fc-9aab-44f3d873c424",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "岳飞",
+    "create_http": 502,
+    "error": {
+      "code": "ROLE_CREATE_FAILED",
+      "message": "Upstream HTTP 503"
+    }
+  },
+  {
+    "name": "辛弃疾",
+    "role_id": "60bf624f-e41c-47b8-9bfc-1011ad2afa1e",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "陆游",
+    "role_id": "ea591163-d1a2-4a3a-982e-0c6dfed3b4a6",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "文天祥",
+    "role_id": "be2ae263-85d3-46a2-8d09-2beb7d149731",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "朱熹",
+    "role_id": "c37225bc-8fc4-4f95-a310-f043360de220",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "关汉卿",
+    "role_id": "8b46cc0a-155d-4a62-8172-8b521997e9f9",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "朱元璋",
+    "role_id": "fd7b0087-f3e3-4f49-b9ef-092b0ee39e33",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "王阳明",
+    "role_id": "2113239b-98eb-4f81-8511-8f51c4cdcc4b",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "戚继光",
+    "role_id": "4c68d131-fac7-4040-a195-0f3647d4bf16",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "李时珍",
+    "role_id": "29124996-fadd-4216-8825-770719b2e8fc",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "康熙",
+    "create_http": 502,
+    "error": {
+      "code": "ROLE_CREATE_FAILED",
+      "message": "Upstream HTTP 503"
+    }
+  },
+  {
+    "name": "鲁班",
+    "role_id": "6edde215-db27-4af2-9b80-4515680e27c1",
+    "create_http": 200,
+    "put_http": 200
+  },
+  {
+    "name": "孙悟空",
+    "role_id": "9750f788-1d3b-4963-87de-2ee0a9da796e",
+    "create_http": 200,
+    "put_http": 409,
+    "put_error": {
+      "code": "CONTENT_MODERATION_BLOCKED",
+      "message": "Content violates community guidelines.",
+      "data": {
+        "code": "CONTENT_MODERATION_BLOCKED",
+        "message": "Content violates community guidelines.",
+        "field": "prompt",
+        "labels": "profanity",
+        "risk_level": "medium",
+        "request_id": "97E133D3-1149-5B75-BC7B-2BA7E1A14699"
+      },
+      "timestamp": 1778546267
+    }
+  },
+  {
+    "name": "哪吒",
+    "role_id": "05fb71c9-8d91-4840-a883-540ff0d70bcc",
+    "create_http": 200,
+    "put_http": 200
+  }
+]
