@@ -11,10 +11,10 @@ function jsonOut(obj: Record<string, unknown>) {
   process.stdout.write(JSON.stringify(obj) + '\n');
 }
 
-export async function sendCommand(message: string, _options: SendOptions) {
+export async function sendCommand(message: string, options: SendOptions) {
   try {
     const creds = await resolveCredentials();
-    const relay = await connectRelay(creds.access_token);
+    const relay = await connectRelay(creds.access_token, { forceNewSession: options.newSession === true });
 
     await saveSession({ session_id: relay.sessionId, created_at: new Date().toISOString() });
     jsonOut({ event: 'session_created', session_id: relay.sessionId });

@@ -18,9 +18,10 @@ function cliHttpUrl(path: string): string {
   return `${getBase()}/cli/v1${path}`;
 }
 
-function cliWsUrl(token: string): string {
+function cliWsUrl(token: string, forceNewSession = false): string {
   const wsBase = getBase().replace(/^https/, 'wss').replace(/^http/, 'ws');
-  return `${wsBase}/cli/v1/ws?token=${encodeURIComponent(token)}`;
+  const suffix = forceNewSession ? '&new_session=1' : '';
+  return `${wsBase}/cli/v1/ws?token=${encodeURIComponent(token)}${suffix}`;
 }
 
 // --- WebSocket relay connection ---
@@ -33,8 +34,8 @@ export interface RelayMessage {
 /**
  * Connect to Relay via WebSocket.
  */
-export async function connectRelay(token: string): Promise<RelayConnection> {
-  const wsUrl = cliWsUrl(token);
+export async function connectRelay(token: string, opts: { forceNewSession?: boolean } = {}): Promise<RelayConnection> {
+  const wsUrl = cliWsUrl(token, opts.forceNewSession === true);
 
   // Race fix (ISS-02, 2026-05-09): the relay sends `{type:"connected"}`
   // immediately on connection, often before our 'open' handler resolves
@@ -71,6 +72,16 @@ function waitForMessage(ws: WebSocket, expectedType: string, timeoutMs: number):
           clearTimeout(timeout);
           ws.removeListener('message', handler);
           resolve(msg);
+        } else if (msg.type === 'error') {
+          // R-54: cli-relay returns a specific error frame
+          // (e.g. WORKSPACE_NOT_PROVISIONED) instead of the expected
+          // 'connected' frame when the user has no workspace yet. Surface
+          // it immediately so the caller doesn't hang to timeout.
+          clearTimeout(timeout);
+          ws.removeListener('message', handler);
+          const code = (msg.code as string) || 'CONNECTION_FAILED';
+          const detail = (msg.message as string) || code;
+          reject(new Error(`${code}: ${detail}`));
         }
       } catch { /* keep waiting */ }
     }
