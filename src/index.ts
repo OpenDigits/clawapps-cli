@@ -45,6 +45,7 @@ import {
   skillsGet,
   skillsInstall,
   skillsUninstall,
+  skillsUpgrade,
 } from './commands/skills.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -367,13 +368,20 @@ skillsCmd
 
 skillsCmd
   .command('install <skill_id>')
-  .description('Install a skill into a role (default: your agent role)')
-  .option('--role-id <id>', 'Target role_id')
-  .action((id: string, opts: { roleId?: string }) => skillsInstall(id, opts));
+  .description('Install an ACTIVE skill into a role you own (BE: POST /roles/:rid/skills/:sid/install)')
+  .requiredOption('--role-id <id>', 'Target role_id (you must own it)')
+  .action((id: string, opts: { roleId: string }) => skillsInstall(id, opts));
 
 skillsCmd
   .command('uninstall <skill_id>')
-  .description('Uninstall a skill from your role')
-  .action((id: string) => skillsUninstall(id));
+  .description('Uninstall a skill from a role you own')
+  .requiredOption('--role-id <id>', 'Role to uninstall from')
+  .action((id: string, opts: { roleId: string }) => skillsUninstall(id, opts));
+
+skillsCmd
+  .command('upgrade <skill_id>')
+  .description("Upgrade a role's installed skill to the latest version_at_install")
+  .requiredOption('--role-id <id>', 'Role to upgrade')
+  .action((id: string, opts: { roleId: string }) => skillsUpgrade(id, opts));
 
 program.parse();

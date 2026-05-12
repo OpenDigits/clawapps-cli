@@ -188,23 +188,52 @@ export async function skillsGet(skillId: string) {
   }
 }
 
-// `clawapps skills install <id>` / `uninstall <id>` — match existing relay routes
+// Install / uninstall / upgrade — nested under role per BE routing.
+// role_id is REQUIRED; caller must own the role; skill must be ACTIVE.
 export async function skillsInstall(skillId: string, opts: { roleId?: string }) {
+  if (!opts.roleId) {
+    jsonOut({ error: '--role-id is required (caller must own the role)' });
+    process.exit(1);
+  }
   try {
-    const body = opts.roleId ? { role_id: opts.roleId } : undefined;
-    const { status, body: out } = await relayJson(
-      'POST', `/cli/v1/skills/${encodeURIComponent(skillId)}/install`, body,
+    const { status, body } = await relayJson(
+      'POST',
+      `/cli/v1/roles/${encodeURIComponent(opts.roleId)}/skills/${encodeURIComponent(skillId)}/install`,
     );
-    emit(status, out);
+    emit(status, body);
   } catch (err) {
     jsonOut({ error: err instanceof Error ? err.message : String(err) });
     process.exit(1);
   }
 }
 
-export async function skillsUninstall(skillId: string) {
+export async function skillsUninstall(skillId: string, opts: { roleId?: string }) {
+  if (!opts.roleId) {
+    jsonOut({ error: '--role-id is required' });
+    process.exit(1);
+  }
   try {
-    const { status, body } = await relayJson('DELETE', `/cli/v1/skills/${encodeURIComponent(skillId)}/install`);
+    const { status, body } = await relayJson(
+      'DELETE',
+      `/cli/v1/roles/${encodeURIComponent(opts.roleId)}/skills/${encodeURIComponent(skillId)}/install`,
+    );
+    emit(status, body);
+  } catch (err) {
+    jsonOut({ error: err instanceof Error ? err.message : String(err) });
+    process.exit(1);
+  }
+}
+
+export async function skillsUpgrade(skillId: string, opts: { roleId?: string }) {
+  if (!opts.roleId) {
+    jsonOut({ error: '--role-id is required' });
+    process.exit(1);
+  }
+  try {
+    const { status, body } = await relayJson(
+      'POST',
+      `/cli/v1/roles/${encodeURIComponent(opts.roleId)}/skills/${encodeURIComponent(skillId)}/upgrade`,
+    );
     emit(status, body);
   } catch (err) {
     jsonOut({ error: err instanceof Error ? err.message : String(err) });
