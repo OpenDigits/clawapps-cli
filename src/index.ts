@@ -15,7 +15,7 @@ import { downloadCommand } from './commands/download.js';
 import { doctorCommand } from './commands/doctor.js';
 import { filesListCommand, filesDeleteCommand } from './commands/files.js';
 import { storageCommand } from './commands/storage.js';
-import { rolesCommand } from './commands/roles.js';
+import { rolesCommand, rolesVisibilityCommand } from './commands/roles.js';
 import { agentProfileSetCommand, agentProfileShowCommand } from './commands/agent.js';
 import { meProfileSetCommand, meProfileShowCommand } from './commands/me.js';
 import { schedulesCommand } from './commands/schedules.js';
@@ -188,10 +188,17 @@ agentProfile
   .argument('<pairs...>', 'KEY=VALUE pairs (tags split by comma)')
   .action((pairs: string[]) => agentProfileSetCommand(pairs));
 
-program
+const rolesCmd = program
   .command('roles')
+  .description('Manage roles (list / visibility)');
+rolesCmd
+  .command('list', { isDefault: true })
   .description('List my roles + following')
   .action(rolesCommand);
+rolesCmd
+  .command('visibility <role_id> <value>')
+  .description('Set role visibility via BE dedicated endpoint. value: public | contacts_only | private')
+  .action((roleId: string, value: string) => rolesVisibilityCommand(roleId, value));
 
 program
   .command('schedules')
