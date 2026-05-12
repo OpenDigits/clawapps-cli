@@ -33,6 +33,19 @@ import {
   activityByRole,
   activityWatch,
 } from './commands/activity.js';
+import {
+  skillsUpload,
+  skillsUploadNewVersion,
+  skillsUpdate,
+  skillsVisibility,
+  skillsRollback,
+  skillsDelete,
+  skillsMine,
+  skillsList,
+  skillsGet,
+  skillsInstall,
+  skillsUninstall,
+} from './commands/skills.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf-8'));
@@ -296,5 +309,71 @@ activityCmd
   .option('--topic <topic_id>', 'Also subscribe to broadcast:topic:<id>')
   .option('--include-replay', 'Emit historical replay frames (default: suppressed; emit replay_done once)')
   .action(activityWatch);
+
+const skillsCmd = program
+  .command('skills')
+  .description('Manage skill packages (upload / version / rollback / install)');
+
+skillsCmd
+  .command('upload <zip>')
+  .description('Upload a new skill zip (≤10MB). Creates version 1.0.0.')
+  .option('--description <text>', 'Optional short description')
+  .action((zip: string, opts: { description?: string }) => skillsUpload(zip, opts));
+
+skillsCmd
+  .command('upload-new-version <skill_id> <zip>')
+  .description('Upload a new version zip. BE bumps patch (e.g. 1.0.0 → 1.0.1).')
+  .action((id: string, zip: string) => skillsUploadNewVersion(id, zip));
+
+skillsCmd
+  .command('update <skill_id> <pairs...>')
+  .description('PATCH metadata. keys: title, short_description, long_description, category_slug, pricing_type, price_amount')
+  .action((id: string, pairs: string[]) => skillsUpdate(id, pairs));
+
+skillsCmd
+  .command('visibility <skill_id> <value>')
+  .description('Set marketplace visibility. value: public | private')
+  .action((id: string, value: string) => skillsVisibility(id, value));
+
+skillsCmd
+  .command('rollback <skill_id> <version>')
+  .description('Revert skill to a prior version (requires that version still in retention window)')
+  .action((id: string, ver: string) => skillsRollback(id, ver));
+
+skillsCmd
+  .command('delete <skill_id>')
+  .description('Hard-delete skill: removes all version zips from GCS and releases storage_used')
+  .action((id: string) => skillsDelete(id));
+
+skillsCmd
+  .command('mine')
+  .description('List skills I own (includes DRAFT / IN_REVIEW)')
+  .action(skillsMine);
+
+skillsCmd
+  .command('list')
+  .description('Browse marketplace (public + ACTIVE only)')
+  .option('--category <c>')
+  .option('--tag <t>')
+  .option('--limit <n>')
+  .option('--cursor <c>')
+  .action((opts: { category?: string; tag?: string; limit?: string; cursor?: string }) =>
+    skillsList(opts));
+
+skillsCmd
+  .command('get <skill_id>')
+  .description('Get skill detail')
+  .action((id: string) => skillsGet(id));
+
+skillsCmd
+  .command('install <skill_id>')
+  .description('Install a skill into a role (default: your agent role)')
+  .option('--role-id <id>', 'Target role_id')
+  .action((id: string, opts: { roleId?: string }) => skillsInstall(id, opts));
+
+skillsCmd
+  .command('uninstall <skill_id>')
+  .description('Uninstall a skill from your role')
+  .action((id: string) => skillsUninstall(id));
 
 program.parse();
