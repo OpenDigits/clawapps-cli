@@ -25,13 +25,28 @@ def load_token():
 
 
 async def one_session(idx, token, message, base_ws):
-    url = f"{base_ws}?token={token}"
+    # ?new_session=1 makes cli-relay bypass SessionPool reuse so each
+    # ws connection lands on a fresh Bridge entry / session_id.
+    url = f"{base_ws}?token={token}&new_session=1"
     sid = None
     charged = None
     cost = None
     reason = None
     try:
         async with websockets.connect(url, open_timeout=30, ping_interval=30) as ws:
+            # Wait for cli-relay's type:'connected' before sending action:message
+            # — otherwise the message can arrive before cliWs.on('message') is
+            # attached (cli-relay registers it AFTER connectBridge resolves)
+            # and gets dropped on the floor.
+            while True:
+                pre = await asyncio.wait_for(ws.recv(), timeout=20)
+                try:
+                    d0 = json.loads(pre)
+                    if d0.get("type") == "connected":
+                        sid = d0.get("session_id") or sid
+                        break
+                except Exception:
+                    pass
             await ws.send(json.dumps({"action": "message", "content": message}))
             async for raw in ws:
                 try:
