@@ -205,9 +205,10 @@ kbCmd
   .action(() => kbRebuild());
 kbCmd
   .command('delete')
-  .description('Delete a KB slug. Omit --role-id for owner delete + cascade clear all roles; specify --role-id to only clear that role.')
-  .requiredOption('--slug <s>', 'KB slug to delete (from kb list / kb scan raw_sources)')
-  .option('--role-id <id>', 'Limit delete scope to this role only (skip cascade)')
+  .description('Delete a KB file. Omit --role-id for owner_delete + cascade across all roles; specify --role-id for role_unbind only.')
+  .option('--file-id <id...>', 'File id(s) to delete (preferred; BE auto-resolves slug)')
+  .option('--slug <s...>', 'KB slug(s) to delete (admin tooling)')
+  .option('--role-id <id>', 'Limit to role_unbind mode (owner KB intact)')
   .action((opts) => kbDelete(opts));
 kbCmd
   .command('callback')

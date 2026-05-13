@@ -158,15 +158,25 @@ export async function kbReset(opts: { mode?: string }) {
   }
 }
 
-// POST /agent/kb/delete {slug, role_id?} — Agent spec S8/S9.
-// role_id 省略 → owner delete + cascade 清所有 role wiki + indexes
-// role_id 给值 → 只清该 role wiki/indexes，不动 owner raw/wiki
-export async function kbDelete(opts: { slug?: string; roleId?: string }) {
-  if (!opts.slug) {
-    jsonOut({ error: '--slug is required' });
+// POST /agent/kb/delete — Agent spec S8/S9, BE 50869e4 (R-63).
+// Two modes keyed by presence of role_id:
+//   - omitted        → owner_delete: cascade clear all roles that ingested this slug
+//   - role_id given  → role_unbind: drop binding from this role only; owner KB intact
+// Identify file by --file-id (BE auto-resolves kb_slug) or --slug (raw slug).
+export async function kbDelete(opts: {
+  fileId?: string[];
+  slug?: string[];
+  roleId?: string;
+}) {
+  const body: Record<string, unknown> = {};
+  if (opts.fileId && opts.fileId.length === 1) body.file_id = opts.fileId[0];
+  else if (opts.fileId && opts.fileId.length > 1) body.file_ids = opts.fileId;
+  if (opts.slug && opts.slug.length === 1) body.slug = opts.slug[0];
+  else if (opts.slug && opts.slug.length > 1) body.slugs = opts.slug;
+  if (!body.file_id && !body.file_ids && !body.slug && !body.slugs) {
+    jsonOut({ error: 'at least one --file-id or --slug required' });
     process.exit(1);
   }
-  const body: Record<string, unknown> = { slug: opts.slug };
   if (opts.roleId) body.role_id = opts.roleId;
   try {
     const { status, body: resp } = await relayJson('POST', '/cli/v1/agent/kb/delete', body);
