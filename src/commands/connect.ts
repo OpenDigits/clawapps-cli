@@ -1,6 +1,7 @@
 import { createInterface } from 'node:readline';
 import { resolveCredentials } from './helpers/resolve-credentials.js';
 import { connectRelay, saveSession } from '../lib/relay-client.js';
+import { pickAllowed, stripDangerous, safeErrorMessage } from '../lib/sanitize.js';
 
 interface ConnectOptions {
   sessionId?: string;
@@ -9,6 +10,35 @@ interface ConnectOptions {
 
 function jsonOut(obj: Record<string, unknown>) {
   process.stdout.write(JSON.stringify(obj) + '\n');
+}
+
+// C1 (2026-05-13 pentest): never spread `...msg` into stdout. Backend frames
+// may carry attacker-controlled fields (forum content, role descriptions,
+// agent profile text) that include prompt-injection payloads. White-list
+// each relay msg.type to a known set of fields and run text through
+// stripDangerous() so ANSI / invisible-Unicode / control bytes can't reach
+// an upstream LLM via the agent's stdout pipe.
+const RELAY_MSG_FIELDS: Record<string, readonly string[]> = {
+  connected: ['session_id', 'mode'],
+  assistant_text: ['content'],
+  formatted: ['mode', 'intro', 'ui_tree', 'timing'],
+  status: ['stage', 'detail'],
+  log: ['level', 'message'],
+  mode_change: ['mode', 'reason'],
+  warning: ['code', 'message', 'data'],
+  cost: ['credits_used', 'balance_after'],
+  complete: ['success', 'mode', 'usage'],
+  error: ['code', 'message'],
+};
+
+function safeRelayEvent(msg: Record<string, unknown>): Record<string, unknown> {
+  const type = typeof msg.type === 'string' ? msg.type : 'unknown';
+  const allowed = RELAY_MSG_FIELDS[type];
+  if (!allowed) {
+    // Unknown type: surface the type only, drop all attacker-controlled fields.
+    return { event: stripDangerous(type) };
+  }
+  return { event: type, ...pickAllowed(msg, allowed as readonly (keyof typeof msg)[]) };
 }
 
 export async function connectCommand(_options: ConnectOptions) {
@@ -41,7 +71,7 @@ export async function connectCommand(_options: ConnectOptions) {
 
     void (async () => {
       for await (const msg of relay.listen()) {
-        jsonOut({ event: msg.type, ...msg });
+        jsonOut(safeRelayEvent(msg));
         if (msg.type === 'complete' || msg.type === 'error') {
           if (pending > 0) pending -= 1;
           if (pending === 0) {
@@ -86,7 +116,7 @@ export async function connectCommand(_options: ConnectOptions) {
     }
     cleanup();
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = safeErrorMessage(err);
     jsonOut({ event: 'error', code: 'CLI_ERROR', message: msg });
     process.exit(msg.includes('authenticated') || msg.includes('expired') ? 2 : 1);
   }

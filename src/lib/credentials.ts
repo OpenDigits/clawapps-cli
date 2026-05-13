@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir, unlink, chmod } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, unlink, chmod, rename } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { CONFIG } from './config.js';
@@ -14,6 +14,21 @@ function getCredentialsDir(): string {
   return join(homedir(), CONFIG.CREDENTIALS_DIR);
 }
 
+/**
+ * C4 (2026-05-13 pentest): the credentials directory was created with the
+ * process umask (typically 0755 = world-readable). The file inside was
+ * chmod 0600, but the directory still let other UIDs `ls` it and observe
+ * mtime side-channels — useful for timing attacks against an admin who
+ * just refreshed a token. Always chmod the dir to 0700 after mkdir.
+ */
+export async function ensureCredentialsDir(): Promise<string> {
+  const dir = getCredentialsDir();
+  await mkdir(dir, { recursive: true });
+  // chmod is no-op on Windows / OK on Unix even if dir already existed.
+  try { await chmod(dir, 0o700); } catch { /* best effort */ }
+  return dir;
+}
+
 export async function loadCredentials(): Promise<Credentials | null> {
   try {
     const data = await readFile(getCredentialsPath(), 'utf-8');
@@ -23,17 +38,26 @@ export async function loadCredentials(): Promise<Credentials | null> {
   }
 }
 
+/**
+ * C12 (2026-05-13 pentest): the original implementation was write-then-chmod
+ * with no atomicity guarantee. A concurrent upgrade migration that called
+ * clearCredentials() between two processes' write+chmod windows could leave
+ * the user with no credentials. Write to a unique tmp file, chmod, then
+ * rename — rename is atomic on POSIX, so readers see either the old file
+ * or the new file, never a partial / 0-byte file.
+ */
 export async function saveCredentials(credentials: Credentials): Promise<void> {
-  const dir = getCredentialsDir();
-  await mkdir(dir, { recursive: true });
+  await ensureCredentialsDir();
 
   const filePath = getCredentialsPath();
+  const tmpPath = `${filePath}.tmp.${process.pid}.${Date.now()}`;
   const stamped: Credentials = {
     schema_version: CREDENTIALS_SCHEMA_VERSION,
     ...credentials,
   };
-  await writeFile(filePath, JSON.stringify(stamped, null, 2), 'utf-8');
-  await chmod(filePath, 0o600);
+  await writeFile(tmpPath, JSON.stringify(stamped, null, 2), { mode: 0o600 });
+  await chmod(tmpPath, 0o600);
+  await rename(tmpPath, filePath);
 }
 
 export async function clearCredentials(): Promise<void> {

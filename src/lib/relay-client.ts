@@ -1,9 +1,15 @@
 import WebSocket from 'ws';
-import { readFile, writeFile, mkdir, chmod } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, chmod, rename } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { CONFIG } from './config.js';
 import { getBase } from './base-url.js';
+
+// C8 (2026-05-13 pentest): bound a single relay frame so a malicious /
+// misbehaving backend can't OOM an automated agent by streaming a 1 GB
+// "assistant_text" payload. 10 MB covers any legitimate frame we ship
+// (UI tree max ~200 KB, single message ~30 KB).
+const WS_MAX_PAYLOAD = 10 * 1024 * 1024;
 import type {
   RelayBalanceResponse,
   SessionInfo,
@@ -41,7 +47,7 @@ export async function connectRelay(token: string, opts: { forceNewSession?: bool
   // immediately on connection, often before our 'open' handler resolves
   // (especially on the reuse fast-path). Attach the message listener BEFORE
   // awaiting 'open' so we never lose the first frame.
-  const socket = new WebSocket(wsUrl);
+  const socket = new WebSocket(wsUrl, { maxPayload: WS_MAX_PAYLOAD });
   const connectedPromise = waitForMessage(socket, 'connected', CONFIG.CLI_CONNECT_TIMEOUT_MS);
 
   await new Promise<void>((resolve, reject) => {
@@ -292,24 +298,35 @@ export async function loadSessions(): Promise<SessionStore> {
   }
 }
 
+// C4 (2026-05-13 pentest): mkdir + chmod 0700 keeps other UIDs from
+// listing sessions.json mtime — the file itself is 0600 but the dir was
+// world-readable. C12: use tmp + rename so concurrent CLI processes can't
+// truncate each other's writes.
+async function ensureDir700(): Promise<string> {
+  const dir = join(homedir(), CONFIG.CREDENTIALS_DIR);
+  await mkdir(dir, { recursive: true });
+  try { await chmod(dir, 0o700); } catch { /* best effort */ }
+  return dir;
+}
+
+async function atomicWrite600(filePath: string, contents: string): Promise<void> {
+  const tmp = `${filePath}.tmp.${process.pid}.${Date.now()}`;
+  await writeFile(tmp, contents, { mode: 0o600 });
+  await chmod(tmp, 0o600);
+  await rename(tmp, filePath);
+}
+
 export async function saveSession(info: SessionInfo): Promise<void> {
   const store = await loadSessions();
   store.sessions[info.session_id] = info;
   store.last_session_id = info.session_id;
-  const dir = join(homedir(), CONFIG.CREDENTIALS_DIR);
-  await mkdir(dir, { recursive: true });
-  const path = sessionsPath();
-  await writeFile(path, JSON.stringify(store, null, 2), 'utf-8');
-  // ISS-05: keep mode 0600 for consistency with credentials.json
-  await chmod(path, 0o600);
+  await ensureDir700();
+  await atomicWrite600(sessionsPath(), JSON.stringify(store, null, 2));
 }
 
 export async function clearSessions(): Promise<void> {
-  const dir = join(homedir(), CONFIG.CREDENTIALS_DIR);
-  await mkdir(dir, { recursive: true });
-  const path = sessionsPath();
-  await writeFile(path, JSON.stringify({ sessions: {} }, null, 2), 'utf-8');
-  await chmod(path, 0o600);
+  await ensureDir700();
+  await atomicWrite600(sessionsPath(), JSON.stringify({ sessions: {} }, null, 2));
 }
 
 export async function getLastSessionId(): Promise<string | null> {

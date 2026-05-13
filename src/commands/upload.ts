@@ -1,9 +1,50 @@
 import { stat, readFile } from 'node:fs/promises';
-import { basename } from 'node:path';
+import { basename, resolve as resolvePath, sep } from 'node:path';
+import { homedir } from 'node:os';
 import { resolveCredentials } from './helpers/resolve-credentials.js';
 import { getBase } from '../lib/base-url.js';
+import { safeErrorMessage } from '../lib/sanitize.js';
 
 const MAX_BYTES = 20 * 1024 * 1024;
+
+// C7 (2026-05-13 pentest): refuse to upload from system / credential paths.
+// An AI agent fed a path from an untrusted task queue could be coerced to
+// upload /etc/shadow or ~/.ssh/id_rsa. Hard-block these prefixes; require
+// CLAWAPPS_ALLOW_ANY_PATH=1 for an explicit, intentional opt-out.
+const FORBIDDEN_PREFIXES = [
+  '/etc/',
+  '/proc/',
+  '/sys/',
+  '/dev/',
+  '/root/.ssh/',
+  '/root/.aws/',
+  '/root/.config/gcloud/',
+];
+
+function validateUploadPath(p: string): void {
+  const abs = resolvePath(p);
+  const home = homedir();
+  // 1. Hard-blocked system / secret paths
+  for (const prefix of FORBIDDEN_PREFIXES) {
+    if (abs === prefix.replace(/\/$/, '') || abs.startsWith(prefix)) {
+      throw new Error(`Refusing to upload from sensitive path: ${abs}`);
+    }
+  }
+  // ~/.ssh, ~/.aws, ~/.gnupg, ~/.clawapps under any home are also blocked.
+  for (const dot of ['.ssh', '.aws', '.gnupg', '.clawapps', '.config/gcloud']) {
+    if (abs === `${home}/${dot}` || abs.startsWith(`${home}/${dot}/`)) {
+      throw new Error(`Refusing to upload from sensitive path: ${abs}`);
+    }
+  }
+  // 2. Default: must be under cwd. Override with CLAWAPPS_ALLOW_ANY_PATH=1.
+  const cwd = process.cwd();
+  if (abs !== cwd && !abs.startsWith(cwd + sep) && !process.env.CLAWAPPS_ALLOW_ANY_PATH) {
+    throw new Error(
+      `Upload path '${abs}' is outside the current directory. ` +
+      `Set CLAWAPPS_ALLOW_ANY_PATH=1 to override (use only with paths you fully control).`,
+    );
+  }
+}
 
 interface UploadOptions {
   url?: string;
@@ -38,6 +79,12 @@ export async function uploadCommand(path: string | undefined, options: UploadOpt
     let response: Response;
 
     if (hasPath) {
+      try {
+        validateUploadPath(path!);
+      } catch (e) {
+        jsonOut({ event: 'error', code: 'PATH_FORBIDDEN', message: safeErrorMessage(e) });
+        process.exit(1);
+      }
       const st = await stat(path!).catch(() => null);
       if (!st) {
         jsonOut({ event: 'error', code: 'NOT_FOUND', message: `File not found: ${path}` });
@@ -121,7 +168,7 @@ export async function uploadCommand(path: string | undefined, options: UploadOpt
     const flat = (body as { data?: unknown }).data ?? body;
     jsonOut({ event: 'uploaded', ...((flat as Record<string, unknown>) || {}) });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = safeErrorMessage(err);
     jsonOut({ event: 'error', code: 'CLI_ERROR', message: msg });
     process.exit(msg.includes('authenticated') || msg.includes('expired') ? 2 : 3);
   }
