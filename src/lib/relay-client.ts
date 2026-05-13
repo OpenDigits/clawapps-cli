@@ -24,10 +24,23 @@ function cliHttpUrl(path: string): string {
   return `${getBase()}/cli/v1${path}`;
 }
 
-function cliWsUrl(token: string, forceNewSession = false): string {
+// C2 (2026-05-13 pentest): the token used to be embedded in the URL as
+// `?token=<jwt>`. That leaked it to /proc/<pid>/environ-equivalents like
+// the WS URL captured in nginx access logs, pm2 stdout, docker logs,
+// systemd journal, and the process command-line as observed by ps/ss.
+// Move the token to a Sec-WebSocket-Protocol value `bearer.<jwt>` —
+// protocol header is per-connection metadata that does NOT survive into
+// access logs or process tables. cli-relay (commit dba88ea) accepts both
+// the new protocol header and the legacy ?token= query string, so this
+// flip is safe to roll out before all servers are upgraded — once they
+// all are, the legacy parser can drop.
+function cliWsUrl(forceNewSession = false): string {
   const wsBase = getBase().replace(/^https/, 'wss').replace(/^http/, 'ws');
-  const suffix = forceNewSession ? '&new_session=1' : '';
-  return `${wsBase}/cli/v1/ws?token=${encodeURIComponent(token)}${suffix}`;
+  return `${wsBase}/cli/v1/ws${forceNewSession ? '?new_session=1' : ''}`;
+}
+
+function bearerProtocol(token: string): string {
+  return `bearer.${token}`;
 }
 
 // --- WebSocket relay connection ---
@@ -41,13 +54,13 @@ export interface RelayMessage {
  * Connect to Relay via WebSocket.
  */
 export async function connectRelay(token: string, opts: { forceNewSession?: boolean } = {}): Promise<RelayConnection> {
-  const wsUrl = cliWsUrl(token, opts.forceNewSession === true);
+  const wsUrl = cliWsUrl(opts.forceNewSession === true);
 
   // Race fix (ISS-02, 2026-05-09): the relay sends `{type:"connected"}`
   // immediately on connection, often before our 'open' handler resolves
   // (especially on the reuse fast-path). Attach the message listener BEFORE
   // awaiting 'open' so we never lose the first frame.
-  const socket = new WebSocket(wsUrl, { maxPayload: WS_MAX_PAYLOAD });
+  const socket = new WebSocket(wsUrl, [bearerProtocol(token)], { maxPayload: WS_MAX_PAYLOAD });
   const connectedPromise = waitForMessage(socket, 'connected', CONFIG.CLI_CONNECT_TIMEOUT_MS);
 
   await new Promise<void>((resolve, reject) => {
