@@ -19,14 +19,14 @@ import { storageCommand } from './commands/storage.js';
 import { rolesCommand, rolesVisibilityCommand } from './commands/roles.js';
 import { agentProfileSetCommand, agentProfileShowCommand } from './commands/agent.js';
 import { meProfileSetCommand, meProfileShowCommand } from './commands/me.js';
-import { schedulesCommand } from './commands/schedules.js';
+import { schedulesCommand, schedulesCreate, schedulesUpdate, schedulesDelete } from './commands/schedules.js';
 import {
   topicsPublishCommand,
   topicsDeleteCommand,
   topicsListCommand,
   topicsGetCommand,
 } from './commands/topics.js';
-import { tasksCommand } from './commands/tasks.js';
+import { tasksCommand, tasksCreate, tasksGet, tasksUpdate, tasksDelete, tasksStop } from './commands/tasks.js';
 import {
   activityList,
   activityRecent,
@@ -278,10 +278,40 @@ rolesCmd
   .description('Set role visibility via BE dedicated endpoint. value: public | contacts_only | private')
   .action((roleId: string, value: string) => rolesVisibilityCommand(roleId, value));
 
-program
+const schedulesCmd = program
   .command('schedules')
-  .description('List my scheduled (recurring) tasks')
-  .action(schedulesCommand);
+  .description('List / create / update / delete scheduled (recurring) tasks')
+  .action(schedulesCommand); // bare `clawapps schedules` keeps list semantics
+schedulesCmd
+  .command('create')
+  .description('Create a scheduled task (cron or once)')
+  .requiredOption('--name <n>', 'Schedule name')
+  .requiredOption('--type <t>', 'cron | once')
+  .option('--cron-expr <expr>', 'Cron expression (5-field), required when --type=cron')
+  .option('--run-at <iso>', 'ISO datetime UTC, required when --type=once')
+  .requiredOption('--action <a>', 'send_text | send_media | archive | delegate_task | custom')
+  .option('--args <json>', 'Action args as JSON string')
+  .option('--timezone <tz>', 'IANA tz, e.g. Asia/Shanghai (default UTC)')
+  .option('--bridge-workspace <ws>', 'X-Bridge-Workspace header (enables delegation mode)')
+  .option('--executing-role-id <id>', 'X-Executing-Role-Id header')
+  .option('--caller-role-id <id>', 'X-Caller-Role-Id header')
+  .action((opts) => schedulesCreate(opts));
+schedulesCmd
+  .command('update')
+  .description('Update a scheduled task (status active⇄paused, name, cron_expr, run_at, args, timezone)')
+  .argument('<schedule_id>')
+  .option('--status <s>', 'active | paused')
+  .option('--name <n>')
+  .option('--cron-expr <expr>')
+  .option('--run-at <iso>')
+  .option('--args <json>')
+  .option('--timezone <tz>')
+  .action((id, opts) => schedulesUpdate(id, opts));
+schedulesCmd
+  .command('delete')
+  .description('Soft-delete a scheduled task (status=deleted)')
+  .argument('<schedule_id>')
+  .action((id) => schedulesDelete(id));
 
 const topicsCmd = program
   .command('topics')
@@ -318,9 +348,9 @@ topicsCmd
   .description('Get full topic detail (anon-readable)')
   .action(topicsGetCommand);
 
-program
+const tasksCmd = program
   .command('tasks')
-  .description('List task execution records')
+  .description('List / create / get / update / delete / stop task execution records')
   .option('--status <s>', 'Comma-separated: running,pending,completed,failed')
   .option('--action <a>', 'Filter by action (agent_task / agent_task_received)')
   .option('--parent-id <id>')
@@ -331,7 +361,44 @@ program
   .option('--date-to <iso>')
   .option('--limit <n>', 'Default 50, max 200')
   .option('--offset <n>')
-  .action(tasksCommand);
+  .action(tasksCommand); // bare `clawapps tasks` keeps list semantics
+tasksCmd
+  .command('create')
+  .description('Create a task record (status starts at pending)')
+  .requiredOption('--title <t>', 'Task title')
+  .option('--task-action <a>', 'agent_task | agent_task_received | delegate_task | send_text | ... (renamed from --action to avoid collision with parent tasks list filter)', 'agent_task')
+  .option('--args <json>', 'Action args as JSON string')
+  .option('--parent <id>', 'Parent task id (creates a subtask). Renamed from --parent-id to avoid collision with parent tasks list filter.')
+  .option('--description <text>')
+  .action((opts) => tasksCreate({ ...opts, action: opts.taskAction, parentId: opts.parent }));
+tasksCmd
+  .command('get')
+  .description('Get task detail with subtasks[] embedded')
+  .argument('<task_id>')
+  .action((id) => tasksGet(id));
+tasksCmd
+  .command('update')
+  .description('Update task (status pending/running/completed/failed/paused/awaiting_input; auto-stamps started_at/completed_at)')
+  .argument('<task_id>')
+  .option('--to-status <s>', 'pending | running | completed | failed | paused | awaiting_input (NOT deleted; use `tasks delete`). Renamed from --status to avoid collision with parent tasks list filter.')
+  .option('--title <t>')
+  .option('--description <text>')
+  .option('--result <json>', 'JSON result payload')
+  .option('--error <text>', 'Failure reason')
+  .option('--ai-work-url <url>')
+  .option('--ai-work-id <id>')
+  .action((id, opts) => tasksUpdate(id, { ...opts, status: opts.toStatus }))
+  .aliases(['patch']);
+tasksCmd
+  .command('delete')
+  .description('Soft-delete a task (status=deleted; row preserved)')
+  .argument('<task_id>')
+  .action((id) => tasksDelete(id));
+tasksCmd
+  .command('stop')
+  .description('Stop a running/pending task. Forwards Gateway task-stop; delegated tasks pause linked Task B too.')
+  .argument('<task_id>')
+  .action((id) => tasksStop(id));
 
 const activityCmd = program
   .command('activity')
