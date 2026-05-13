@@ -158,6 +158,25 @@ export async function kbReset(opts: { mode?: string }) {
   }
 }
 
+// POST /agent/kb/delete {slug, role_id?} — Agent spec S8/S9.
+// role_id 省略 → owner delete + cascade 清所有 role wiki + indexes
+// role_id 给值 → 只清该 role wiki/indexes，不动 owner raw/wiki
+export async function kbDelete(opts: { slug?: string; roleId?: string }) {
+  if (!opts.slug) {
+    jsonOut({ error: '--slug is required' });
+    process.exit(1);
+  }
+  const body: Record<string, unknown> = { slug: opts.slug };
+  if (opts.roleId) body.role_id = opts.roleId;
+  try {
+    const { status, body: resp } = await relayJson('POST', '/cli/v1/agent/kb/delete', body);
+    emit(status, resp);
+  } catch (err) {
+    jsonOut({ error: err instanceof Error ? err.message : String(err) });
+    process.exit(1);
+  }
+}
+
 // POST /agent/kb/rebuild — Agent spec S11. Admin-gated.
 // raw → inbox → 清 wiki/indexes → 重 ingest 所有 raw
 export async function kbRebuild() {

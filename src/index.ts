@@ -14,7 +14,7 @@ import { modelGet, modelSet, modelList } from './commands/model.js';
 import { downloadCommand } from './commands/download.js';
 import { doctorCommand } from './commands/doctor.js';
 import { filesListCommand, filesDeleteCommand, filesAccessCommand } from './commands/files.js';
-import { kbIngest, kbScan, kbList, kbStatus, kbDetach, kbReset, kbRebuild, kbCallback } from './commands/kb.js';
+import { kbIngest, kbScan, kbList, kbStatus, kbDetach, kbReset, kbRebuild, kbCallback, kbDelete } from './commands/kb.js';
 import { storageCommand } from './commands/storage.js';
 import { rolesCommand, rolesVisibilityCommand } from './commands/roles.js';
 import { agentProfileSetCommand, agentProfileShowCommand } from './commands/agent.js';
@@ -203,6 +203,12 @@ kbCmd
   .command('rebuild')
   .description('Rebuild KB from raw (raw→inbox→clear→re-ingest)')
   .action(() => kbRebuild());
+kbCmd
+  .command('delete')
+  .description('Delete a KB slug. Omit --role-id for owner delete + cascade clear all roles; specify --role-id to only clear that role.')
+  .requiredOption('--slug <s>', 'KB slug to delete (from kb list / kb scan raw_sources)')
+  .option('--role-id <id>', 'Limit delete scope to this role only (skip cascade)')
+  .action((opts) => kbDelete(opts));
 kbCmd
   .command('callback')
   .description('[TEST] Simulate Bridge → BE callback (cli-relay injects X-Cluster-Secret)')
