@@ -1,5 +1,5 @@
 import { resolveCredentials } from './helpers/resolve-credentials.js';
-import { listFiles, deleteFile, type FilesListParams } from '../lib/relay-client.js';
+import { listFiles, deleteFile, getDownloadUrl, type FilesListParams } from '../lib/relay-client.js';
 
 interface FilesListOptions {
   query?: string;
@@ -46,6 +46,19 @@ export async function filesDeleteCommand(fileId: string) {
     const creds = await resolveCredentials();
     await deleteFile(creds.access_token, fileId);
     jsonOut({ deleted: true, file_id: fileId });
+  } catch (err) {
+    fail(err instanceof Error ? err.message : String(err));
+  }
+}
+
+// BE spec endpoint /api/v1/files/access/:id — 60min signed URL, re-signed
+// every call. cli-relay normalizes the response shape (line 528).
+export async function filesAccessCommand(fileId: string) {
+  if (!fileId) fail('file id required');
+  try {
+    const creds = await resolveCredentials();
+    const result = await getDownloadUrl(creds.access_token, fileId);
+    jsonOut(result);
   } catch (err) {
     fail(err instanceof Error ? err.message : String(err));
   }

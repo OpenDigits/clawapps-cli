@@ -13,7 +13,8 @@ import { whoamiCommand } from './commands/whoami.js';
 import { modelGet, modelSet, modelList } from './commands/model.js';
 import { downloadCommand } from './commands/download.js';
 import { doctorCommand } from './commands/doctor.js';
-import { filesListCommand, filesDeleteCommand } from './commands/files.js';
+import { filesListCommand, filesDeleteCommand, filesAccessCommand } from './commands/files.js';
+import { kbIngest, kbScan, kbList, kbStatus, kbDetach } from './commands/kb.js';
 import { storageCommand } from './commands/storage.js';
 import { rolesCommand, rolesVisibilityCommand } from './commands/roles.js';
 import { agentProfileSetCommand, agentProfileShowCommand } from './commands/agent.js';
@@ -154,6 +155,45 @@ filesCmd
   .description('Delete a file by id (must not be installed in any role)')
   .argument('<file_id>')
   .action(filesDeleteCommand);
+filesCmd
+  .command('access')
+  .description('Get a 60-minute signed download URL for a file (re-signed each call)')
+  .argument('<file_id>')
+  .action(filesAccessCommand);
+
+// `clawapps kb ...` — knowledge base ingest / list / scan / status / detach
+// Mirrors BE spec /api/v1/agent/kb/* (ingest 三态 / scan / list). The callback
+// endpoint (X-Cluster-Secret server-to-server) is intentionally NOT exposed.
+const kbCmd = program
+  .command('kb')
+  .description('Knowledge base — ingest files into role KB, list, scan, status');
+kbCmd
+  .command('ingest')
+  .description('Ingest files into a role KB (owner path: agent role; install path: pro role; --remove to detach all)')
+  .requiredOption('--role-id <id>', 'Target role id')
+  .option('--file-id <id...>', 'File ids to ingest (repeatable). Omit + use --remove to detach all.')
+  .option('--remove', 'Detach all kb files from role (sends file_ids=[])')
+  .action((opts) => kbIngest(opts));
+kbCmd
+  .command('scan')
+  .description('Pull Gateway raw_sources; backfill is_knowledge + kb_slug (fallback when callback missed)')
+  .option('--role-id <id>', 'Optional role scope')
+  .action((opts) => kbScan(opts));
+kbCmd
+  .command('list')
+  .description('List my KB files; with --role-id, each item gets is_installed flag')
+  .option('--role-id <id>', 'Optional role scope')
+  .action((opts) => kbList(opts));
+kbCmd
+  .command('status')
+  .description('Show ingest job status for a role (running/completed/failed)')
+  .requiredOption('--role-id <id>', 'Target role id')
+  .action((opts) => kbStatus(opts));
+kbCmd
+  .command('detach')
+  .description('Detach all kb files from a role (alias: kb ingest --remove)')
+  .requiredOption('--role-id <id>', 'Target role id')
+  .action((opts) => kbDetach(opts));
 
 program
   .command('storage')
