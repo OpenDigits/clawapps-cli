@@ -138,3 +138,60 @@ export async function kbStatus(opts: { roleId?: string }) {
 export async function kbDetach(opts: { roleId?: string }) {
   await kbIngest({ roleId: opts.roleId, remove: true });
 }
+
+// POST /agent/kb/reset {mode:"soft"|"hard"} — Agent spec S10. Admin-gated
+// (cli-relay injects X-Cluster-Secret from env).
+// soft: archive existing wiki/indexes to archived/{ts}/, raw → inbox
+// hard: 全清 (raw + wiki + indexes + inbox + archived)
+export async function kbReset(opts: { mode?: string }) {
+  const mode = opts.mode || 'soft';
+  if (mode !== 'soft' && mode !== 'hard') {
+    jsonOut({ error: `--mode must be soft or hard (got: ${mode})` });
+    process.exit(1);
+  }
+  try {
+    const { status, body } = await relayJson('POST', '/cli/v1/agent/kb/reset', { mode });
+    emit(status, body);
+  } catch (err) {
+    jsonOut({ error: err instanceof Error ? err.message : String(err) });
+    process.exit(1);
+  }
+}
+
+// POST /agent/kb/rebuild — Agent spec S11. Admin-gated.
+// raw → inbox → 清 wiki/indexes → 重 ingest 所有 raw
+export async function kbRebuild() {
+  try {
+    const { status, body } = await relayJson('POST', '/cli/v1/agent/kb/rebuild', {});
+    emit(status, body);
+  } catch (err) {
+    jsonOut({ error: err instanceof Error ? err.message : String(err) });
+    process.exit(1);
+  }
+}
+
+// POST /agent/kb/callback — server-to-server simulation for KB30-KB33 auth
+// matrix testing. cli-relay injects X-Cluster-Secret; BE accepts.
+// In prod this is called by Bridge directly. CLI exposes it only for testing
+// the BE callback handler's payload semantics.
+interface KbCallbackOptions {
+  jobId?: string;
+  fileId?: string;
+  slug?: string;
+  status?: string;
+}
+export async function kbCallback(opts: KbCallbackOptions) {
+  const body: Record<string, unknown> = {
+    job_id: opts.jobId,
+    file_id: opts.fileId,
+    slug: opts.slug,
+    status: opts.status || 'completed',
+  };
+  try {
+    const { status: code, body: resp } = await relayJson('POST', '/cli/v1/agent/kb/callback', body);
+    emit(code, resp);
+  } catch (err) {
+    jsonOut({ error: err instanceof Error ? err.message : String(err) });
+    process.exit(1);
+  }
+}

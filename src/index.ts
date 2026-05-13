@@ -14,7 +14,7 @@ import { modelGet, modelSet, modelList } from './commands/model.js';
 import { downloadCommand } from './commands/download.js';
 import { doctorCommand } from './commands/doctor.js';
 import { filesListCommand, filesDeleteCommand, filesAccessCommand } from './commands/files.js';
-import { kbIngest, kbScan, kbList, kbStatus, kbDetach } from './commands/kb.js';
+import { kbIngest, kbScan, kbList, kbStatus, kbDetach, kbReset, kbRebuild, kbCallback } from './commands/kb.js';
 import { storageCommand } from './commands/storage.js';
 import { rolesCommand, rolesVisibilityCommand } from './commands/roles.js';
 import { agentProfileSetCommand, agentProfileShowCommand } from './commands/agent.js';
@@ -194,6 +194,23 @@ kbCmd
   .description('Detach all kb files from a role (alias: kb ingest --remove)')
   .requiredOption('--role-id <id>', 'Target role id')
   .action((opts) => kbDetach(opts));
+kbCmd
+  .command('reset')
+  .description('Reset KB. --mode soft (archive + raw→inbox) or hard (purge all)')
+  .option('--mode <m>', 'soft (default) | hard', 'soft')
+  .action((opts) => kbReset(opts));
+kbCmd
+  .command('rebuild')
+  .description('Rebuild KB from raw (raw→inbox→clear→re-ingest)')
+  .action(() => kbRebuild());
+kbCmd
+  .command('callback')
+  .description('[TEST] Simulate Bridge → BE callback (cli-relay injects X-Cluster-Secret)')
+  .requiredOption('--job-id <id>', 'Ingest job id')
+  .requiredOption('--file-id <id>', 'File id')
+  .requiredOption('--slug <s>', 'KB slug to write back')
+  .option('--status <s>', 'completed|failed', 'completed')
+  .action((opts) => kbCallback(opts));
 
 program
   .command('storage')
